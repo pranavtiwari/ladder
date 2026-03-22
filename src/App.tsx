@@ -4,9 +4,13 @@ import { useAuth } from './context/AuthContext';
 
 import Dashboard from './pages/Dashboard';
 import ClubDetails from './pages/ClubDetails';
+import ClubView from './pages/ClubView';
+import JoinClub from './pages/JoinClub';
+import LadderView from './pages/LadderView';
 import LadderStandings from './pages/LadderStandings';
 import MatchHistory from './pages/MatchHistory';
 import Login from './pages/Login';
+import Profile from './pages/Profile';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -30,8 +34,12 @@ function App() {
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="clubs" element={<ClubDetails />} />
+          <Route path="clubs/join" element={<JoinClub />} />
+          <Route path="clubs/:id" element={<ClubView />} />
+          <Route path="clubs/:id/ladders/:ladderId" element={<LadderView />} />
           <Route path="ladders" element={<LadderStandings />} />
           <Route path="matches" element={<MatchHistory />} />
+          <Route path="profile" element={<Profile />} />
         </Route>
       </Routes>
     </BrowserRouter>

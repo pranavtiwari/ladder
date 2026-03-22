@@ -4,7 +4,7 @@
 A web and mobile application to streamline the management of racquet sports (tennis, squash, badminton, pickleball, padel) clubs and competitive ladders. The app handles user memberships, ladder standings, match challenge workflows, and score recording.
 
 ## 2. User Roles
-*   **Player (Member):** Can browse clubs, request to join clubs, participate in ladders, challenge other players, record match scores, and view history.
+*   **Player (Member):** Can browse clubs, request to join clubs, form doubles teams, participate in both singles and doubles ladders, challenge other players/teams, record match scores, and view history.
 *   **Club Admin:** Can create clubs, manage memberships (approve/reject), create ladders, set ladder rules, and moderate disputes.
 
 ## 3. Core Functionality
@@ -14,18 +14,24 @@ A web and mobile application to streamline the management of racquet sports (ten
 *   **Admin Tools:** Dashboard to manage the member roster and club settings.
 
 ### 3.2. Ladder System
-*   **Dynamic Standings:** Visual ranking of players within a specific ladder.
+*   **Dynamic Standings:** Visual ranking of participants (players or teams) within a specific ladder.
+*   **Ladder Types:** Separate support for Singles (individual ranks) and Doubles (team ranks).
 *   **Ladder Rules Engine:** Support for standard bump rules (e.g., if you beat someone higher, you take their spot and they drop down one).
-*   **Eligibility:** Restrictions on who players can challenge (e.g., can only challenge up to 3 spots above your current rank).
+*   **Eligibility:** Restrictions on who players/teams can challenge (e.g., can only challenge up to 3 spots above your current rank).
 
-### 3.3. Match Workflow (The Loop)
-1.  **Challenge:** Player A sends a challenge to Player B.
-2.  **Schedule:** Players coordinate and accept the challenge.
-3.  **Play & Record:** Match is played; one player inputs the final score (e.g., 6-4, 7-5).
-4.  **Confirm:** The second player verifies the entered score.
+### 3.3. Team Formation
+*   **Doubles Teams:** Players can invite a partner to form a doubles team.
+*   **Team Names:** Teams can optionally have a custom team name (e.g., "The Smashers").
+*   **Participation:** Formed teams can join doubles ladders as a single competitive unit.
+
+### 3.4. Match Workflow (The Loop)
+1.  **Challenge:** Participant A (Player or Team) sends a challenge to Participant B.
+2.  **Schedule:** Participants coordinate and accept the challenge.
+3.  **Play & Record:** Match is played; one participant inputs the final score (e.g., 6-4, 7-5).
+4.  **Confirm:** The opposing participant verifies the entered score.
 5.  **Update:** Ladder auto-updates rank based on the confirmed result.
 
-### 3.4. Actionable Dashboard (To-Do Widget)
+### 3.5. Actionable Dashboard (To-Do Widget)
 *   A central widget on the Home page highlighting required user actions:
     *   Accept/Decline incoming match challenges.
     *   Confirm pending match scores entered by opponents.
@@ -45,9 +51,10 @@ These core screens will form the base of the UI generated via Google Stitch.
     *   List of active ladders within the club.
     *   Member roster.
 4.  **Ladder Standings Page:**
-    *   Vertical list of players indicating rank.
+    *   Vertical list of participants (individuals or teams) indicating rank.
     *   "Challenge" button next to eligible opponents.
     *   Recent movement indicators (up/down arrows).
+    *   Toggle/Tabs to switch between Singles and Doubles ladders.
 5.  **Match History & Profile Page:**
     *   Player statistics (Win/Loss ratio).
     *   Log of past matches with detailed scores.

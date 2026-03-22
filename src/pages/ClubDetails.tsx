@@ -1,56 +1,176 @@
-
+import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
+import { Plus, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function ClubDetails() {
+  const { user } = useAuth();
+  const [clubs, setClubs] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateForm, setShowCreateForm] = useState(false);
+  const [newClubName, setNewClubName] = useState('');
+  const [newClubDesc, setNewClubDesc] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      loadClubs();
+    }
+  }, [user]);
+
+  async function loadClubs() {
+    try {
+      setLoading(true);
+      // Fetch clubs where the user is a member
+      const { data, error } = await supabase
+        .from('clubs')
+        .select(`
+          *,
+          club_members!inner(role)
+        `)
+        .eq('club_members.player_id', user?.id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setClubs(data || []);
+    } catch (error) {
+      console.error('Error loading clubs:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateClub(e: React.FormEvent) {
+    e.preventDefault();
+    if (!user || !newClubName.trim()) return;
+
+    try {
+      setCreating(true);
+      const { error } = await supabase
+        .from('clubs')
+        .insert({
+          name: newClubName.trim(),
+          description: newClubDesc.trim(),
+          owner_id: user.id
+        });
+
+      if (error) throw error;
+
+      setNewClubName('');
+      setNewClubDesc('');
+      setShowCreateForm(false);
+      // reload clubs to see the newly created one
+      await loadClubs();
+    } catch (error) {
+      console.error('Error creating club:', error);
+      alert('Failed to create club. Please ensure you have run the updated SQL schema.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  if (loading) {
+    return <div className="flex justify-center p-8 text-gray-500">Loading clubs...</div>;
+  }
+
   return (
-    <div className="flex-col gap-6">
-      <div className="flex items-center gap-4 mb-4">
-        <div style={{ width: 64, height: 64, borderRadius: 'var(--radius-md)', backgroundColor: 'var(--primary-color)' }}></div>
-        <div>
-          <h1 className="page-title" style={{ marginBottom: 0 }}>Metropolitan Tennis Club</h1>
-          <div className="text-light">Founded 1998 • 245 Members</div>
+    <div className="flex-col gap-6 max-w-4xl mx-auto" style={{ width: '100%' }}>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="page-title" style={{ marginBottom: 0, color: 'var(--primary-color)' }}>My Clubs</h1>
+        <div style={{ display: 'flex', gap: '0.6rem' }}>
+          <Link
+            to="/clubs/join"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+              padding: '0.45rem 1rem', borderRadius: '6px',
+              border: '2px solid var(--primary-color)', color: 'var(--primary-color)',
+              fontWeight: 600, fontSize: '0.875rem', textDecoration: 'none',
+            }}
+          >
+            Browse &amp; Join Clubs
+          </Link>
+          <button
+            onClick={() => setShowCreateForm(!showCreateForm)}
+            className="btn flex items-center gap-2"
+            style={{ backgroundColor: 'var(--primary-color)', color: 'white' }}
+          >
+            <Plus size={18} /> Create Club
+          </button>
         </div>
       </div>
 
-      <div className="card" style={{ backgroundColor: '#eff6ff', borderColor: '#bfdbfe' }}>
-        <div className="font-semibold mb-2" style={{ color: '#1e40af' }}>📢 Announcements</div>
-        <p style={{ color: '#1e3a8a' }}>The Spring Singles Tournament starts next week! Register before Friday.</p>
-      </div>
-
-      <div className="flex gap-6 mt-4" style={{ flexWrap: 'wrap' }}>
-        <div className="flex-col gap-4" style={{ flex: '2 1 400px' }}>
-          <h2 className="section-title">Active Ladders</h2>
-          <div className="card flex items-center justify-between">
+      {showCreateForm && (
+        <div className="card mb-6" style={{ border: '2px solid var(--primary-color)' }}>
+          <h2 className="text-xl font-semibold mb-4 text-gray-800">Create a New Club</h2>
+          <form onSubmit={handleCreateClub} className="flex-col gap-4">
             <div>
-              <div className="font-semibold text-lg">Men's Singles</div>
-              <div className="text-sm text-light">42 Players • Standard Bump Rules</div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">Club Name</label>
+              <input 
+                type="text" 
+                required
+                className="input border-gray-300" 
+                style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }}
+                value={newClubName}
+                onChange={e => setNewClubName(e.target.value)}
+                placeholder="e.g. Downtown Tennis Club"
+              />
             </div>
-            <button className="btn btn-primary">Join Ladder</button>
-          </div>
-          <div className="card flex items-center justify-between">
             <div>
-              <div className="font-semibold text-lg">Women's Singles</div>
-              <div className="text-sm text-light">28 Players • Standard Bump Rules</div>
+              <label className="block text-sm font-medium mb-1 text-gray-700">Description</label>
+              <textarea 
+                className="input border-gray-300" 
+                style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px', minHeight: '80px', fontFamily: 'inherit' }}
+                value={newClubDesc}
+                onChange={e => setNewClubDesc(e.target.value)}
+                placeholder="Describe your club..."
+              />
             </div>
-            <button className="btn btn-primary">Join Ladder</button>
-          </div>
+            <div className="flex justify-end gap-3 mt-4">
+              <button 
+                type="button" 
+                className="btn btn-outline" 
+                onClick={() => setShowCreateForm(false)}
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="btn" 
+                style={{ backgroundColor: 'var(--primary-color)', color: 'white' }}
+                disabled={creating}
+              >
+                {creating ? 'Creating...' : 'Create Club'}
+              </button>
+            </div>
+          </form>
         </div>
-        
-        <div className="flex-col gap-4" style={{ flex: '1 1 250px' }}>
-          <h2 className="section-title">Member Roster</h2>
-          <div className="card flex-col gap-3">
-            {[1,2,3,4,5].map(i => (
-              <div key={i} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#e2e8f0' }}></div>
-                  <span className="font-semibold">Player {i}</span>
-                </div>
-                <span className="badge badge-blue">Advanced</span>
+      )}
+
+      {clubs.length === 0 ? (
+        <div className="card text-center p-12 text-gray-500" style={{ backgroundColor: '#f9fafb' }}>
+          <Users size={48} className="mx-auto mb-4 opacity-40 text-gray-400" />
+          <h3 className="text-xl font-medium text-gray-800 mb-2">No clubs found</h3>
+          <p className="text-gray-500">You aren't a member of any clubs yet. Create one to get started!</p>
+        </div>
+      ) : (
+        <div className="grid gap-6" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
+          {clubs.map(club => (
+            <div key={club.id} className="card flex-col justify-between hover:shadow-md transition-shadow" style={{ minHeight: '160px' }}>
+              <div>
+                <h3 className="text-xl font-bold mb-2" style={{ color: '#111827' }}>{club.name}</h3>
+                <p className="text-gray-600 mb-4 text-sm" style={{ minHeight: '40px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{club.description || 'No description provided.'}</p>
               </div>
-            ))}
-            <button className="btn btn-outline mt-4 w-full">View All Members</button>
-          </div>
+              <div className="flex justify-between items-center pt-4" style={{ borderTop: '1px solid #e5e7eb' }}>
+                <span className="badge" style={{ backgroundColor: '#e0e7ff', color: '#4f46e5', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
+                  {club.club_members[0]?.role}
+                </span>
+                <Link to={`/clubs/${club.id}`} className="btn btn-outline btn-sm" style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem', textDecoration: 'none' }}>View Club</Link>
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

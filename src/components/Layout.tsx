@@ -1,8 +1,27 @@
 
+import { useEffect, useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import { Menu, Home, Layers, Users, TrendingUp, User } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { useAuth } from '../context/AuthContext';
 
 export default function Layout() {
+  const { user } = useAuth();
+  const [nickname, setNickname] = useState<string>('');
+
+  useEffect(() => {
+    if (user) {
+      supabase
+        .from('profiles')
+        .select('nickname, first_name')
+        .eq('id', user.id)
+        .single()
+        .then(({ data }) => {
+          setNickname(data?.nickname || data?.first_name || '');
+        });
+    }
+  }, [user]);
+
   return (
     <div className="app-container">
       {/* Mobile Header */}
@@ -34,7 +53,8 @@ export default function Layout() {
             <Layers size={20} /> Matches
           </NavLink>
           <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <User size={20} /> Profile
+            <User size={20} />
+            {nickname ? nickname : 'Profile'}
           </NavLink>
         </nav>
       </aside>

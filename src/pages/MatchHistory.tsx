@@ -1,78 +1,103 @@
-import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function MatchHistory() {
-  const [showModal, setShowModal] = useState(false);
+  const { user } = useAuth();
+  const [matches, setMatches] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const matches = [
-    { date: 'Oct 12, 2023', opponent: 'Casey Smith', result: 'Win', score: '6-4, 5-7, 7-6' },
-    { date: 'Oct 05, 2023', opponent: 'Jordan Lee', result: 'Loss', score: '3-6, 4-6' },
-    { date: 'Sep 28, 2023', opponent: 'Sam Taylor', result: 'Win', score: '6-2, 6-1' },
-  ];
+  useEffect(() => {
+    if (user) loadMatches();
+  }, [user]);
+
+  async function loadMatches() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('matches')
+        .select(`
+          id, status, score_text, played_at,
+          ladders(name, sport, clubs(name)),
+          challenger:profiles!matches_challenger_id_fkey(nickname, first_name, avatar_url),
+          defender:profiles!matches_defender_id_fkey(nickname, first_name, avatar_url),
+          winner:profiles!matches_winner_id_fkey(nickname, first_name)
+        `)
+        .or(`challenger_id.eq.${user?.id},defender_id.eq.${user?.id}`)
+        .order('played_at', { ascending: false });
+      if (error) throw error;
+      setMatches(data || []);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function displayName(p: any) {
+    return p?.nickname || p?.first_name || '—';
+  }
+
+  function formatDate(iso: string) {
+    if (!iso) return '';
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  }
 
   return (
-    <div className="flex-col gap-6" style={{ position: 'relative' }}>
+    <div className="flex-col gap-6">
       <div className="flex items-center justify-between mb-4">
         <h1 className="page-title" style={{ marginBottom: 0 }}>Match History</h1>
-        <button className="btn btn-primary" onClick={() => setShowModal(true)}>
-          <Plus size={16} /> Record Match
-        </button>
       </div>
 
-      <div className="flex-col gap-3">
-        {matches.map((match, idx) => (
-          <div key={idx} className="card flex items-center justify-between">
-            <div>
-              <div className="font-semibold">{match.opponent}</div>
-              <div className="text-sm text-light">{match.date}</div>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="font-semibold text-lg">{match.score}</div>
-              <span className={`badge ${match.result === 'Win' ? 'badge-green' : 'badge-red'}`}>
-                {match.result}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
+      {loading ? (
+        <p style={{ color: '#9ca3af' }}>Loading…</p>
+      ) : matches.length === 0 ? (
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: '#6b7280' }}>
+          No matches recorded yet.
+        </div>
+      ) : (
+        <div className="flex-col gap-3">
+          {matches.map(match => {
+            const isChallenger = match.challenger_id === user?.id || match.challenger?.id === user?.id;
+            const opponent = isChallenger ? match.defender : match.challenger;
+            const me = isChallenger ? match.challenger : match.defender;
+            const wonId = match.winner_id;
+            let result: 'Win' | 'Loss' | 'Pending' | 'Disputed' = 'Pending';
+            if (match.status === 'completed') {
+              result = (wonId === user?.id) ? 'Win' : 'Loss';
+            } else if (match.status === 'disputed') {
+              result = 'Disputed';
+            }
 
-      {/* Record Match Modal */}
-      {showModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="card" style={{ width: '100%', maxWidth: 500, margin: '1rem' }}>
-            <h2 className="section-title">Record Match Result</h2>
-            <div className="flex-col gap-4 mt-4">
-              <div className="flex-col gap-2">
-                <label className="font-semibold text-sm">Opponent</label>
-                <select className="p-2" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
-                  <option>Select opponent...</option>
-                  <option>Casey Smith</option>
-                  <option>Sam Taylor</option>
-                </select>
-              </div>
-              
-              <div className="flex items-center gap-4">
-                <div className="flex-col gap-2" style={{ flex: 1 }}>
-                  <label className="font-semibold text-sm">You (Sets Won)</label>
-                  <input type="number" min="0" max="3" className="p-2 w-full" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }} />
+            const resultColor = result === 'Win' ? '#059669' : result === 'Loss' ? '#dc2626' : result === 'Disputed' ? '#d97706' : '#6b7280';
+            const resultBg = result === 'Win' ? '#d1fae5' : result === 'Loss' ? '#fee2e2' : result === 'Disputed' ? '#fef3c7' : '#f3f4f6';
+
+            return (
+              <div key={match.id} className="card flex items-center justify-between" style={{ flexWrap: 'wrap', gap: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {opponent?.avatar_url
+                    ? <img src={opponent.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
+                    : <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
+                  <div>
+                    <div style={{ fontWeight: 600, color: '#111827' }}>
+                      {displayName(me)} <span style={{ color: '#9ca3af', fontWeight: 400 }}>vs</span> {displayName(opponent)}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                      {match.ladders?.clubs?.name} · {match.ladders?.name} · {formatDate(match.played_at)}
+                    </div>
+                  </div>
                 </div>
-                <div className="flex-col gap-2" style={{ flex: 1 }}>
-                  <label className="font-semibold text-sm">Opponent (Sets Won)</label>
-                  <input type="number" min="0" max="3" className="p-2 w-full" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  {match.score_text && (
+                    <span style={{ fontWeight: 600, color: '#374151', fontSize: '0.9rem' }}>{match.score_text}</span>
+                  )}
+                  <span style={{ padding: '3px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, backgroundColor: resultBg, color: resultColor }}>
+                    {result}
+                  </span>
                 </div>
               </div>
-
-              <div className="flex-col gap-2">
-                <label className="font-semibold text-sm">Match Notes (Optional)</label>
-                <textarea rows={3} className="p-2 w-full" style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }} placeholder="Great match!"></textarea>
-              </div>
-
-              <div className="flex gap-2 justify-between mt-4">
-                <button className="btn btn-outline" onClick={() => setShowModal(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={() => setShowModal(false)}>Submit Result</button>
-              </div>
-            </div>
-          </div>
+            );
+          })}
         </div>
       )}
     </div>

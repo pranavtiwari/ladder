@@ -18,15 +18,60 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const ensureProfileExists = async (currentUser: User) => {
+      try {
+        const { user_metadata } = currentUser;
+        const full_name = user_metadata?.full_name || '';
+        const parts = full_name.split(' ');
+        const first_name = parts[0] || '';
+        const last_name = parts.length > 1 ? parts.slice(1).join(' ') : '';
+        const avatar_url = user_metadata?.avatar_url || '';
+
+        // Check if profile exists first to safely avoid RLS upsert permission issues
+        const { error: matchError } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', currentUser.id)
+          .single();
+
+        if (matchError && matchError.code === 'PGRST116') {
+          // Profile not found, so we insert
+          const { error: insertError } = await supabase
+            .from('profiles')
+            .insert({
+              id: currentUser.id,
+              first_name,
+              last_name,
+              nickname: first_name,
+              avatar_url
+            });
+            
+          if (insertError) {
+            console.error('Error inserting profile:', insertError);
+          }
+        } else if (matchError) {
+          console.error('Error checking profile existence:', matchError);
+        }
+      } catch (error) {
+        console.error('Error ensuring profile exists:', error);
+      }
+    };
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
+      if (session?.user) {
+        ensureProfileExists(session.user);
+      }
       setLoading(false);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      if (session?.user) {
+        ensureProfileExists(session.user);
+      }
       setLoading(false);
     });
 
