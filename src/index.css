@@ -93,14 +93,17 @@ ul {
 
 /* Premium Card Profiles */
 .card {
-  background-color: var(--surface-color);
+  background-color: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 12px 0 rgb(0 0 0 / 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.7);
   padding: 1.5rem;
-  transition: box-shadow 0.2s ease;
+  transition: box-shadow 0.2s ease, background-color 0.2s ease;
 }
 .card:hover {
+  background-color: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow-md);
 }
 
@@ -145,17 +148,41 @@ ul {
   flex-direction: column;
   overflow-y: auto;
   padding: 2rem;
-  background-color: var(--bg-color);
+  background-color: transparent;
+  background-image: url('/badminton_bg.png');
+  background-size: cover;
+  background-position: center top;
+  background-attachment: fixed;
+  position: relative;
+}
+
+/* Frosted overlay sits behind all content */
+.main-content::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(248, 250, 252, 0.82);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Push page content above the overlay */
+.main-content > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Sidebar Navigation */
 .sidebar {
   width: 250px;
-  background-color: var(--surface-color);
-  border-right: 1px solid var(--border-color);
+  background-color: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-right: 1px solid rgba(226, 232, 240, 0.8);
   display: flex;
   flex-direction: column;
   padding: 1.5rem 0;
+  z-index: 10;
 }
 
 .sidebar-brand {
