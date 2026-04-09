@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-type Theme = 'neon-court' | 'glassmorphism' | 'midnight-navy' | 'clay-court';
+type Theme = 'neon-court' | 'glassmorphism' | 'midnight-navy' | 'clay-court' | 'light';
 
 interface ThemeContextType {
   theme: Theme;
@@ -9,7 +9,7 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const ALL_THEMES: Theme[] = ['neon-court', 'glassmorphism', 'midnight-navy', 'clay-court'];
+const ALL_THEMES: Theme[] = ['neon-court', 'glassmorphism', 'midnight-navy', 'clay-court', 'light'];
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>(() => {

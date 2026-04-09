@@ -99,6 +99,36 @@ export default function Layout() {
             >
               <BookOpen size={20} /> Rules & Info
             </NavLink>
+
+            {/* Mobile Theme Selector */}
+            <div style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', marginTop: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-light)', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+                <Palette size={14} /> THEME
+              </div>
+              <select 
+                value={theme} 
+                onChange={(e) => {
+                  setTheme(e.target.value as any);
+                  setMobileMenuOpen(false);
+                }}
+                className="input"
+                style={{ 
+                  width: '100%', 
+                  padding: '0.4rem 0.6rem', 
+                  fontSize: '0.85rem', 
+                  borderRadius: '6px',
+                  backgroundColor: 'var(--surface-color)',
+                  border: '1px solid var(--border-color)',
+                  color: 'var(--text-dark)'
+                }}
+              >
+                <option value="neon-court">Neon Court</option>
+                <option value="glassmorphism">Glassmorphism</option>
+                <option value="midnight-navy">Midnight Navy</option>
+                <option value="clay-court">Clay & Hardcourt</option>
+                <option value="light">Light</option>
+              </select>
+            </div>
           </nav>
         </>
       )}
@@ -154,6 +184,7 @@ export default function Layout() {
             <option value="glassmorphism">Glassmorphism</option>
             <option value="midnight-navy">Midnight Navy</option>
             <option value="clay-court">Clay & Hardcourt</option>
+            <option value="light">Light</option>
           </select>
         </div>
       </aside>
