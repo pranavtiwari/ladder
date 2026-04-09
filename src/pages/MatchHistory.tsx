@@ -21,6 +21,16 @@ export default function MatchHistory() {
   async function loadMatches() {
     setLoading(true);
     try {
+      // Get user's team IDs so we can include doubles matches
+      const { data: myTeams } = await supabase
+        .from('teams')
+        .select('id')
+        .or(`player1_id.eq.${user?.id},player2_id.eq.${user?.id}`);
+      const myTeamIds = myTeams?.map((t: any) => t.id) || [];
+      const teamFilter = myTeamIds.length > 0
+        ? `,challenger_team_id.in.(${myTeamIds.join(',')}),defender_team_id.in.(${myTeamIds.join(',')})`
+        : '';
+
       const { data, error } = await supabase
         .from('matches')
         .select(`
@@ -34,7 +44,7 @@ export default function MatchHistory() {
           challenger_team:teams!matches_challenger_team_id_fkey(id, name, player1_id, player2_id),
           defender_team:teams!matches_defender_team_id_fkey(id, name, player1_id, player2_id)
         `)
-        .or(`challenger_id.eq.${user?.id},defender_id.eq.${user?.id}`)
+        .or(`challenger_id.eq.${user?.id},defender_id.eq.${user?.id}${teamFilter}`)
         .order('played_at', { ascending: false });
       if (error) throw error;
       setMatches(data || []);

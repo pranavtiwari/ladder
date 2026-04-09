@@ -115,13 +115,68 @@ export default function Dashboard() {
 
   async function loadRanks() {
     try {
-      const { data } = await supabase
+      const { data: playerLadders } = await supabase
         .from('ladder_players')
-        .select('current_rank, wins, losses, ladders(id, name, sport, type, club_id, clubs(name))')
-        .eq('player_id', user?.id)
-        .gt('current_rank', 0)   // exclude rank-0 ELO placeholder rows from doubles ladders
-        .order('current_rank');
-      setRanks(data || []);
+        .select('current_rank, elo_rating, wins, losses, ladders(id, name, sport, type, club_id, clubs(name))')
+        .eq('player_id', user?.id);
+
+      const { data: myTeams } = await supabase
+        .from('teams')
+        .select('id, name')
+        .or(`player1_id.eq.${user?.id},player2_id.eq.${user?.id}`);
+
+      const teamIds = (myTeams || []).map((t: any) => t.id);
+
+      let teamLadders: any[] = [];
+      if (teamIds.length > 0) {
+        const { data: lt } = await supabase
+          .from('ladder_teams')
+          .select('current_rank, elo_rating, wins, losses, team_id, ladder_id, ladders!inner(id, name, sport, type, club_id, clubs(name))')
+          .in('team_id', teamIds);
+        teamLadders = lt || [];
+      }
+
+      const combined: any[] = [];
+      const lpMap = new Map();
+      (playerLadders || []).forEach((pl: any) => lpMap.set(pl.ladders?.id, pl.elo_rating));
+
+      (playerLadders || []).forEach((pl: any) => {
+        if (pl.ladders?.type === 'singles' && pl.current_rank > 0) {
+          combined.push({
+            id: pl.ladders?.id,
+            ladder_id: pl.ladders?.id,
+            name: pl.ladders?.name,
+            club_name: pl.ladders?.clubs?.name,
+            club_id: pl.ladders?.club_id,
+            type: 'singles',
+            current_rank: pl.current_rank,
+            wins: pl.wins,
+            losses: pl.losses,
+            elo_rating: pl.elo_rating
+          });
+        }
+      });
+
+      teamLadders.forEach((tl: any) => {
+        const teamName = myTeams?.find((t: any) => t.id === tl.team_id)?.name || 'Team';
+        const indElo = lpMap.get(tl.ladder_id) ?? 800;
+        combined.push({
+            id: `${tl.ladder_id}_${tl.team_id}`,
+            ladder_id: tl.ladder_id,
+            name: `${tl.ladders?.name} (${teamName})`,
+            club_name: tl.ladders?.clubs?.name,
+            club_id: tl.ladders?.club_id,
+            type: 'doubles',
+            current_rank: tl.current_rank,
+            wins: tl.wins,
+            losses: tl.losses,
+            elo_rating: indElo,
+            team_elo: tl.elo_rating
+        });
+      });
+
+      combined.sort((a, b) => a.current_rank - b.current_rank);
+      setRanks(combined);
     } catch (err) {
       console.error(err);
     }
@@ -455,16 +510,21 @@ export default function Dashboard() {
               <Link to="/ladders" style={{ color: 'var(--primary-color)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>Browse Ladders →</Link>
             </div>
           ) : (
-            <div className="flex-col gap-3">
+            <div className="flex-col gap-3" style={{ maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
               {ranks.map((r: any) => (
                 <Link
-                  key={r.ladders?.id}
-                  to={`/clubs/${r.ladders?.club_id}/ladders/${r.ladders?.id}`}
+                  key={r.id}
+                  to={`/clubs/${r.club_id}/ladders/${r.ladder_id}`}
                   style={{ textDecoration: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.5rem 0', borderBottom: '1px solid #f3f4f6' }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.9rem' }}>{r.ladders?.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{r.ladders?.clubs?.name}</div>
+                    <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.9rem' }}>{r.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{r.club_name}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>
+                      {r.type === 'doubles' 
+                        ? `Ind. ELO: ${r.elo_rating} | Team ELO: ${r.team_elo}` 
+                        : `ELO: ${r.elo_rating}`}
+                    </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--primary-color)' }}>#{r.current_rank}</div>

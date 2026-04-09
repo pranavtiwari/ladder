@@ -52,9 +52,10 @@ export default function LadderView() {
     if (ladderId && user) load();
   }, [ladderId, user]);
 
-  // Sort entries by ELO descending and assign display ranks
-  function sortByElo(data: any[]) {
-    const sorted = [...data].sort((a, b) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800));
+  // Sort entries by DB current_rank and assign display rank
+  function sortByRank(data: any[]) {
+    // Fallback sort just in case, but DB should already return rank order
+    const sorted = [...data].sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
     return sorted.map((entry, i) => ({ ...entry, display_rank: i + 1 }));
   }
 
@@ -77,7 +78,7 @@ export default function LadderView() {
           .select('*, profiles(nickname, first_name, avatar_url)')
           .eq('ladder_id', ladderId)
           .gt('current_rank', 0);
-        const sorted = sortByElo(players || []);
+        const sorted = sortByRank(players || []);
         setEntries(sorted);
         const me = sorted.find((p: any) => p.player_id === user?.id);
         setMyRank(me?.display_rank ?? null);
@@ -86,7 +87,7 @@ export default function LadderView() {
           .from('ladder_teams')
           .select('*, teams(name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name))')
           .eq('ladder_id', ladderId);
-        const sorted = sortByElo(teams || []);
+        const sorted = sortByRank(teams || []);
         setEntries(sorted);
 
         const { data: lPlayers } = await supabase.from('ladder_players').select('*').eq('ladder_id', ladderId);
@@ -439,12 +440,12 @@ export default function LadderView() {
               const rank = entry.display_rank;
               const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
 
-              // Allow challenging up to 3 above and 3 below
+              // Allow challenging up to 2 above and 2 below
               const canChallenge =
                 !isMe &&
                 alreadyJoined &&
                 myActiveRank !== null &&
-                Math.abs(rank - myActiveRank) <= 3 &&
+                Math.abs(rank - myActiveRank) <= 2 &&
                 rank !== myActiveRank;
 
               const hasActiveMatch = myMatches.some(m =>

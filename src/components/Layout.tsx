@@ -1,7 +1,7 @@
 
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, Link } from 'react-router-dom';
-import { Menu, Home, Layers, Users, TrendingUp, User, X } from 'lucide-react';
+import { Menu, Home, Layers, Users, TrendingUp, User, X, BookOpen } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 
@@ -90,6 +90,13 @@ export default function Layout() {
             >
               <User size={20} /> {nickname ? nickname : 'Profile'}
             </NavLink>
+            <NavLink
+              to="/rules"
+              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              <BookOpen size={20} /> Rules & Info
+            </NavLink>
           </nav>
         </>
       )}
@@ -115,6 +122,9 @@ export default function Layout() {
           <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <User size={20} />
             {nickname ? nickname : 'Profile'}
+          </NavLink>
+          <NavLink to="/rules" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+            <BookOpen size={20} /> Rules & Info
           </NavLink>
         </nav>
       </aside>

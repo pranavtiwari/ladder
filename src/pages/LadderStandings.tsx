@@ -131,8 +131,8 @@ export default function LadderStandings() {
           .select('*, profiles(nickname, first_name, avatar_url)')
           .eq('ladder_id', group.ladder_id)
           .gt('current_rank', 0);
-        // Sort by ELO descending and assign display rank
-        const sorted = [...(data || [])].sort((a: any, b: any) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800))
+        // Sort by DB current_rank directly and assign display rank
+        const sorted = [...(data || [])].sort((a: any, b: any) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999))
           .map((e: any, i: number) => ({ ...e, display_rank: i + 1 }));
         setStandings(sorted);
         const me = sorted.find((e: any) => e.player_id === user?.id);
@@ -142,8 +142,8 @@ export default function LadderStandings() {
           .from('ladder_teams')
           .select('*, teams(id, name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, avatar_url), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, avatar_url))')
           .eq('ladder_id', group.ladder_id);
-        // Sort by ELO descending and assign display rank
-        const sorted = [...(data || [])].sort((a: any, b: any) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800))
+        // Sort by DB current_rank directly and assign display rank
+        const sorted = [...(data || [])].sort((a: any, b: any) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999))
           .map((e: any, i: number) => ({ ...e, display_rank: i + 1 }));
         setStandings(sorted);
         const activeTeamEntry = sorted.find((e: any) => e.team_id === group.activeTeamId);
@@ -333,7 +333,7 @@ export default function LadderStandings() {
                     const name = e.profiles?.nickname || e.profiles?.first_name || '—';
                     const rank = e.display_rank ?? (i + 1);
                     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-                    const canChallenge = !isMe && myRank !== null && Math.abs(rank - myRank) <= 3 && rank !== myRank;
+                    const canChallenge = !isMe && myRank !== null && Math.abs(rank - myRank) <= 2 && rank !== myRank;
                     return (
                       <div key={e.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',
@@ -378,8 +378,8 @@ export default function LadderStandings() {
                     const p2 = e.teams?.profiles_player2?.nickname || e.teams?.profiles_player2?.first_name || '?';
                     const rank = e.display_rank ?? (i + 1);
                     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-                    // Can challenge ±3 ranks
-                    const canChallenge = !isMe && myRank !== null && Math.abs(rank - myRank) <= 3 && rank !== myRank;
+                    // Can challenge ±2 ranks
+                    const canChallenge = !isMe && myRank !== null && Math.abs(rank - myRank) <= 2 && rank !== myRank;
                     return (
                       <div key={e.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',

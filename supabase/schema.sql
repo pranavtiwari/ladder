@@ -209,6 +209,10 @@ begin
     else
       update public.teams set elo_rating = new_win_elo where id = new.winner_team_id;
       update public.teams set elo_rating = new_lose_elo where id = loser_id;
+      
+      -- Also update ladder_teams elo_rating
+      update public.ladder_teams set elo_rating = new_win_elo where ladder_id = new.ladder_id and team_id = new.winner_team_id;
+      update public.ladder_teams set elo_rating = new_lose_elo where ladder_id = new.ladder_id and team_id = loser_id;
     end if;
 
   end if;
@@ -216,6 +220,72 @@ begin
 end;
 $$ language plpgsql security definer;
 
-create trigger on_match_completed
+-- Bump Ladder shift logic
+create or replace function public.handle_match_completion()
+returns trigger as $$
+declare
+  ladder_rec RECORD;
+  is_singles BOOLEAN;
+  winner_uid UUID;
+  loser_uid  UUID;
+  
+  winner_current_rank INT;
+  loser_current_rank INT;
+begin
+  if NEW.status <> 'completed' or OLD.status = 'completed' then
+    return NEW;
+  end if;
+
+  select * into ladder_rec from public.ladders where id = NEW.ladder_id;
+  is_singles := (ladder_rec.type = 'singles');
+
+  if is_singles then
+    winner_uid := NEW.winner_id;
+    loser_uid  := case when NEW.winner_id = NEW.challenger_id then NEW.defender_id else NEW.challenger_id end;
+
+    -- Update wins/losses
+    update public.ladder_players set wins = wins + 1, score_reached_at = now() where ladder_id = NEW.ladder_id and player_id = winner_uid;
+    update public.ladder_players set losses = losses + 1, score_reached_at = now() where ladder_id = NEW.ladder_id and player_id = loser_uid;
+
+    -- Fetch current ranks
+    select current_rank into winner_current_rank from public.ladder_players where ladder_id = NEW.ladder_id and player_id = winner_uid and current_rank > 0;
+    select current_rank into loser_current_rank from public.ladder_players where ladder_id = NEW.ladder_id and player_id = loser_uid and current_rank > 0;
+
+    if winner_current_rank is not null and loser_current_rank is not null then
+      -- If winner has logically worse (higher) rank
+      if winner_current_rank > loser_current_rank then
+        update public.ladder_players set current_rank = current_rank + 1 where ladder_id = NEW.ladder_id and current_rank >= loser_current_rank and current_rank < winner_current_rank and current_rank > 0;
+        update public.ladder_players set current_rank = loser_current_rank where ladder_id = NEW.ladder_id and player_id = winner_uid and current_rank > 0;
+      end if;
+    end if;
+
+  else
+    winner_uid := NEW.winner_team_id;
+    loser_uid  := case when NEW.winner_team_id = NEW.challenger_team_id then NEW.defender_team_id else NEW.challenger_team_id end;
+
+    -- Update wins/losses
+    update public.ladder_teams set wins = wins + 1, score_reached_at = now() where ladder_id = NEW.ladder_id and team_id = winner_uid;
+    update public.ladder_teams set losses = losses + 1, score_reached_at = now() where ladder_id = NEW.ladder_id and team_id = loser_uid;
+
+    select current_rank into winner_current_rank from public.ladder_teams where ladder_id = NEW.ladder_id and team_id = winner_uid;
+    select current_rank into loser_current_rank from public.ladder_teams where ladder_id = NEW.ladder_id and team_id = loser_uid;
+
+    if winner_current_rank is not null and loser_current_rank is not null then
+      if winner_current_rank > loser_current_rank then
+        update public.ladder_teams set current_rank = current_rank + 1 where ladder_id = NEW.ladder_id and current_rank >= loser_current_rank and current_rank < winner_current_rank;
+        update public.ladder_teams set current_rank = loser_current_rank where ladder_id = NEW.ladder_id and team_id = winner_uid;
+      end if;
+    end if;
+  end if;
+
+  return NEW;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_match_completed_elo
   after update of status on public.matches
   for each row execute procedure public.update_match_elo();
+
+create trigger on_match_completed_bump
+  after update of status on public.matches
+  for each row execute procedure public.handle_match_completion();

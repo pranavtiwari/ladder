@@ -36,10 +36,8 @@ A web application for managing racquet sports clubs (badminton, tennis, table te
 ### Key Triggers & Functions
 - **`handle_new_club()`** — Automatically adds the club creator as an admin member.
 - **`handle_new_user()`** — Creates a profile row when a new auth user is created.
-- **`update_match_elo()`** — Fires on match status change to `completed`:
-  - Calculates ELO using standard formula (K=32).
-  - Updates `profiles.elo_rating` for singles or `teams.elo_rating` + `ladder_teams.elo_rating` for doubles.
-  - Recomputes `current_rank` for all participants in the affected ladder based on ELO descending order.
+- **`update_match_elo()`** — Fires on match completion to calculate and update ELO (for fun/stats only, does not affect ladder position).
+- **`handle_match_completion()`** — Fires on match completion to execute standard Bump-Ladder shifts if the winner is ranked below the loser.
 
 ### RLS Policies
 - Profiles, clubs, ladders, ladder entries, matches, and teams are **readable by everyone** (authenticated).
@@ -47,14 +45,14 @@ A web application for managing racquet sports clubs (badminton, tennis, table te
 
 ## 5. Ranking System
 
-### ELO-Based Rankings
-- All standings are **ranked by ELO rating** (descending), not by join order.
-- Display rank is computed client-side by sorting entries by `elo_rating DESC` and assigning sequential position numbers.
-- The database trigger also recomputes stored `current_rank` after each match to keep it consistent.
-- Default starting ELO: **800**.
+### Bump Ladder Rankings
+- Official standings are rigidly ordered by `current_rank`.
+- **Match Bumps:** If a player challenges someone ranked above them and wins, the winner takes the loser's exact rank. Everyone from the loser's old rank down to the winner's old rank shifts down by exactly one spot.
+- **Defending:** If the higher-ranked player wins, no rank changes occur.
+- **ELO:** ELO is tracked as a fun, secondary statistic but has absolutely no bearing on your ladder `current_rank`.
 
 ### Challenge Rules
-- Players/teams can challenge opponents up to **3 positions above or below** their current rank.
+- Players/teams can challenge opponents up to **2 positions above or below** their current rank.
 - A challenge button appears next to eligible opponents in the standings.
 - Active challenges are tracked — users cannot challenge someone they already have an open match with.
 

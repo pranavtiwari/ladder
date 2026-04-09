@@ -11,6 +11,7 @@ import LadderStandings from './pages/LadderStandings';
 import MatchHistory from './pages/MatchHistory';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
+import Rules from './pages/Rules';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -40,6 +41,7 @@ function App() {
           <Route path="ladders" element={<LadderStandings />} />
           <Route path="matches" element={<MatchHistory />} />
           <Route path="profile" element={<Profile />} />
+          <Route path="rules" element={<Rules />} />
         </Route>
       </Routes>
     </BrowserRouter>
