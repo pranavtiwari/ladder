@@ -53,7 +53,7 @@ export default function LadderView() {
   }, [ladderId, user]);
 
   // Sort entries by ELO descending and assign display ranks
-  function sortByElo(data: any[], kind: 'singles' | 'doubles') {
+  function sortByElo(data: any[]) {
     const sorted = [...data].sort((a, b) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800));
     return sorted.map((entry, i) => ({ ...entry, display_rank: i + 1 }));
   }
@@ -77,7 +77,7 @@ export default function LadderView() {
           .select('*, profiles(nickname, first_name, avatar_url)')
           .eq('ladder_id', ladderId)
           .gt('current_rank', 0);
-        const sorted = sortByElo(players || [], 'singles');
+        const sorted = sortByElo(players || []);
         setEntries(sorted);
         const me = sorted.find((p: any) => p.player_id === user?.id);
         setMyRank(me?.display_rank ?? null);
@@ -86,7 +86,7 @@ export default function LadderView() {
           .from('ladder_teams')
           .select('*, teams(name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name))')
           .eq('ladder_id', ladderId);
-        const sorted = sortByElo(teams || [], 'doubles');
+        const sorted = sortByElo(teams || []);
         setEntries(sorted);
 
         const { data: lPlayers } = await supabase.from('ladder_players').select('*').eq('ladder_id', ladderId);
