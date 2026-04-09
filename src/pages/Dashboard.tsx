@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, XCircle, LogOut, Users, Swords, Trophy } from 'lucide-react';
+import { CheckCircle, XCircle, LogOut, Users, Swords, Trophy, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
@@ -11,8 +11,15 @@ export default function Dashboard() {
   const [joinRequests, setJoinRequests] = useState<any[]>([]);
   const [pendingChallenges, setPendingChallenges] = useState<any[]>([]);
   const [pendingScores, setPendingScores] = useState<any[]>([]);
+  const [confirmations, setConfirmations] = useState<any[]>([]);
   const [ranks, setRanks] = useState<any[]>([]);
   const [processingReq, setProcessingReq] = useState<string | null>(null);
+
+  // Score recording
+  const [recordingMatch, setRecordingMatch] = useState<any>(null);
+  const [scoreText, setScoreText] = useState('');
+  const [winnerId, setWinnerId] = useState('');
+  const [submittingScore, setSubmittingScore] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -62,22 +69,45 @@ export default function Dashboard() {
 
   async function loadMatches() {
     try {
+      // 1. Get my teams first for filtering
+      const { data: myTeams } = await supabase
+        .from('teams')
+        .select('id')
+        .or(`player1_id.eq.${user?.id},player2_id.eq.${user?.id}`);
+      const myTeamIds = myTeams?.map(t => t.id) || [];
+      const teamFilter = myTeamIds.length > 0 ? `,challenger_team_id.in.(${myTeamIds.join(',')}),defender_team_id.in.(${myTeamIds.join(',')})` : '';
+
       const { data } = await supabase
         .from('matches')
         .select(`
-          id, status, challenger_id, defender_id, winner_id, score_text,
-          ladders(name, club_id, clubs(name)),
-          challenger:profiles!matches_challenger_id_fkey(nickname, first_name, avatar_url),
-          defender:profiles!matches_defender_id_fkey(nickname, first_name, avatar_url)
+          id, status, challenger_id, defender_id, challenger_team_id, defender_team_id, winner_id, winner_team_id, score_text, score_submitted_by, score_submitted_at,
+          ladders(id, name, type, club_id, clubs(name)),
+          challenger:profiles!matches_challenger_id_fkey(id, nickname, first_name, avatar_url),
+          defender:profiles!matches_defender_id_fkey(id, nickname, first_name, avatar_url),
+          challenger_team:teams!matches_challenger_team_id_fkey(id, name, player1_id, player2_id),
+          defender_team:teams!matches_defender_team_id_fkey(id, name, player1_id, player2_id)
         `)
-        .or(`challenger_id.eq.${user?.id},defender_id.eq.${user?.id}`)
-        .in('status', ['pending', 'completed'])
+        .or(`challenger_id.eq.${user?.id},defender_id.eq.${user?.id}${teamFilter}`)
         .order('played_at', { ascending: false });
 
-      const pending = (data || []).filter((m: any) => m.status === 'pending');
-      const awaitingScore = (data || []).filter((m: any) => m.status === 'completed' && !m.winner_id);
-      setPendingChallenges(pending);
-      setPendingScores(awaitingScore);
+      const matches = data || [];
+      const now = new Date();
+
+      // 24h Auto-accept logic
+      for (const m of matches) {
+        if (m.status === 'score_submitted' && m.score_submitted_at) {
+          const submittedAt = new Date(m.score_submitted_at);
+          const hoursDiff = (now.getTime() - submittedAt.getTime()) / (1000 * 60 * 60);
+          if (hoursDiff >= 24) {
+            await supabase.from('matches').update({ status: 'completed' }).eq('id', m.id);
+            m.status = 'completed';
+          }
+        }
+      }
+
+      setPendingChallenges(matches.filter((m: any) => m.status === 'pending'));
+      setPendingScores(matches.filter((m: any) => m.status === 'accepted'));
+      setConfirmations(matches.filter((m: any) => m.status === 'score_submitted' && m.score_submitted_by !== user?.id));
     } catch (err) {
       console.error(err);
     }
@@ -103,6 +133,7 @@ export default function Dashboard() {
       if (approved) {
         await supabase.from('club_members').insert({ club_id: clubId, player_id: playerId, role: 'member' });
       }
+      await loadClubs();
       setJoinRequests(prev => prev.filter(r => r.id !== reqId));
     } catch (err: any) {
       alert(err.message || 'Failed.');
@@ -113,15 +144,65 @@ export default function Dashboard() {
 
   async function acceptChallenge(matchId: string) {
     await supabase.from('matches').update({ status: 'accepted' }).eq('id', matchId);
-    setPendingChallenges(prev => prev.filter(m => m.id !== matchId));
+    await loadMatches();
   }
 
   async function declineChallenge(matchId: string) {
     await supabase.from('matches').update({ status: 'declined' }).eq('id', matchId);
-    setPendingChallenges(prev => prev.filter(m => m.id !== matchId));
+    await loadMatches();
   }
 
-  const totalActions = joinRequests.length + pendingChallenges.length + pendingScores.length;
+  async function submitScore() {
+    if (!recordingMatch || !winnerId) return;
+    setSubmittingScore(true);
+    try {
+      const { error } = await supabase.from('matches').update({
+        score_text: scoreText,
+        winner_id: winnerId,
+        status: 'score_submitted',
+        score_submitted_by: user?.id,
+        score_submitted_at: new Date().toISOString()
+      }).eq('id', recordingMatch.id);
+      if (error) throw error;
+      setRecordingMatch(null);
+      setScoreText('');
+      setWinnerId('');
+      await loadMatches();
+    } catch (err: any) {
+      alert(err.message || 'Failed to submit score.');
+    } finally {
+      setSubmittingScore(false);
+    }
+  }
+
+  async function abandonMatch() {
+    if (!recordingMatch) return;
+    setSubmittingScore(true); // Reusing the loading state
+    try {
+      const { error } = await supabase.from('matches').update({ status: 'abandoned' }).eq('id', recordingMatch.id);
+      if (error) throw error;
+      setRecordingMatch(null);
+      await loadMatches();
+    } catch (err: any) {
+      alert(err.message || 'Failed to abandon match.');
+    } finally {
+      setSubmittingScore(false);
+    }
+  }
+
+  async function confirmScore(match: any) {
+    try {
+      // Mark match as completed — DB trigger handles rank swap, stats, and ELO automatically
+      const { error } = await supabase.from('matches').update({ status: 'completed' }).eq('id', match.id);
+      if (error) throw error;
+      await loadMatches();
+      await loadRanks();
+    } catch (err: any) {
+      alert(err.message || 'Failed to confirm score.');
+    }
+  }
+
+  const totalActions = joinRequests.length + pendingChallenges.filter((m: any) => m.defender_id === user?.id).length + pendingScores.length + confirmations.length;
 
   function displayName(p: any) {
     return p?.nickname || p?.first_name || '—';
@@ -212,28 +293,102 @@ export default function Dashboard() {
 
             {/* Pending score recording */}
             {pendingScores.map(match => {
-              const isChallenger = match.challenger_id === user?.id;
-              const opponent = isChallenger ? match.defender : match.challenger;
+              const ladder = match.ladders;
+              const isSingles = ladder?.type === 'singles';
+              const opponentName = isSingles 
+                ? (match.challenger_id === user?.id ? displayName(match.defender) : displayName(match.challenger))
+                : (match.challenger_team?.player1_id === user?.id || match.challenger_team?.player2_id === user?.id ? (match.defender_team?.name) : (match.challenger_team?.name));
+
               return (
                 <div key={match.id} style={{ padding: '0.85rem 1rem', backgroundColor: '#f0f9ff', borderRadius: 'var(--radius-md)', border: '1px solid #bae6fd', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                     <Trophy size={20} color="#0284c7" />
                     <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Record Score</div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>In Progress Match</div>
                       <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                        vs <strong>{displayName(opponent)}</strong> in <strong>{match.ladders?.name}</strong> — score not yet recorded
+                        vs <strong>{opponentName}</strong> in <strong>{ladder?.name}</strong>
                       </div>
                     </div>
                   </div>
-                  <Link to="/matches" style={{ padding: '0.3rem 0.8rem', borderRadius: '6px', backgroundColor: '#0284c7', color: 'white', textDecoration: 'none', fontSize: '0.8rem', fontWeight: 600 }}>
+                  <button onClick={() => setRecordingMatch(match)} className="btn" style={{ padding: '0.3rem 0.8rem', backgroundColor: '#0284c7', color: 'white', fontSize: '0.8rem', fontWeight: 600 }}>
                     Record Score
-                  </Link>
+                  </button>
+                </div>
+              );
+            })}
+
+            {/* Score confirmations */}
+            {confirmations.map(match => {
+              const submitterName = match.score_submitted_by === match.challenger_id ? displayName(match.challenger) : displayName(match.defender);
+              
+              return (
+                <div key={match.id} style={{ padding: '0.85rem 1rem', backgroundColor: '#ecfdf5', borderRadius: 'var(--radius-md)', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <CheckCircle size={20} color="#059669" />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Confirm Score</div>
+                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                        <strong>{submitterName}</strong> recorded <strong>{match.score_text}</strong>.
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => confirmScore(match)} className="btn" style={{ padding: '0.3rem 0.8rem', backgroundColor: '#059669', color: 'white', fontSize: '0.8rem', fontWeight: 600 }}>
+                      Confirm
+                    </button>
+                    <button onClick={() => supabase.from('matches').update({ status: 'disputed' }).eq('id', match.id).then(() => loadMatches())} className="btn btn-outline" style={{ padding: '0.3rem 0.8rem', color: '#dc2626', borderColor: '#dc2626', fontSize: '0.8rem' }}>
+                      Dispute
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
         )}
       </section>
+
+      {/* Record Score Modal */}
+      {recordingMatch && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '420px', position: 'relative' }}>
+            <button onClick={() => setRecordingMatch(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ fontWeight: 700, fontSize: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Trophy size={20} color="#f59e0b" /> Record Result
+            </h2>
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>Who won?</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input type="radio" name="winner" value={recordingMatch.ladders?.type === 'singles' ? recordingMatch.challenger_id : recordingMatch.challenger_team_id} checked={winnerId === (recordingMatch.ladders?.type === 'singles' ? recordingMatch.challenger_id : recordingMatch.challenger_team_id)} onChange={e => setWinnerId(e.target.value)} />
+                  {recordingMatch.ladders?.type === 'singles' ? displayName(recordingMatch.challenger) : recordingMatch.challenger_team?.name}
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input type="radio" name="winner" value={recordingMatch.ladders?.type === 'singles' ? recordingMatch.defender_id : recordingMatch.defender_team_id} checked={winnerId === (recordingMatch.ladders?.type === 'singles' ? recordingMatch.defender_id : recordingMatch.defender_team_id)} onChange={e => setWinnerId(e.target.value)} />
+                  {recordingMatch.ladders?.type === 'singles' ? displayName(recordingMatch.defender) : recordingMatch.defender_team?.name}
+                </label>
+              </div>
+            </div>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>Final Score</label>
+              <input type="text" value={scoreText} onChange={e => setScoreText(e.target.value)} placeholder="e.g. 21-15, 21-18" style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px' }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+              <button className="btn" style={{ padding: '0.3rem 0.8rem', color: '#6b7280', border: '1px solid #d1d5db', fontSize: '0.8rem' }} onClick={abandonMatch} disabled={submittingScore}>
+                Abandon Match
+              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button className="btn btn-outline" onClick={() => setRecordingMatch(null)}>Cancel</button>
+                <button className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }} disabled={submittingScore || !winnerId} onClick={submitScore}>
+                  {submittingScore ? 'Saving…' : 'Submit Result'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Grid */}
       <div className="flex gap-6 mt-4" style={{ flexWrap: 'wrap' }}>

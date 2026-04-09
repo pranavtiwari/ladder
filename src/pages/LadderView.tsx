@@ -29,6 +29,7 @@ export default function LadderView() {
   const [creatingTeam, setCreatingTeam] = useState(false);
 
   const [selectedTeam, setSelectedTeam] = useState('');
+  const [myMatches, setMyMatches] = useState<any[]>([]);
 
   // Challenge
   const [challengeTarget, setChallengeTarget] = useState<any>(null);
@@ -53,7 +54,7 @@ export default function LadderView() {
       if (lad.type === 'singles') {
         const { data: players } = await supabase
           .from('ladder_players')
-          .select('*, profiles(nickname, first_name, avatar_url)')
+          .select('*, profiles(nickname, first_name, avatar_url, elo_rating)')
           .eq('ladder_id', ladderId)
           .order('current_rank');
         setEntries(players || []);
@@ -62,9 +63,9 @@ export default function LadderView() {
       } else {
         const { data: teams } = await supabase
           .from('ladder_teams')
-          .select('*, teams(name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name))')
+          .select('*, teams(name, player1_id, player2_id, elo_rating, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, elo_rating, doubles_elo), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, elo_rating, doubles_elo))')
           .eq('ladder_id', ladderId)
-          .order('current_rank');
+          .order('current_rank'); // current_rank is ELO-ordered by DB trigger
         setEntries(teams || []);
 
         // My teams in this club
@@ -87,6 +88,20 @@ export default function LadderView() {
           .neq('player_id', user?.id);
         setClubMembers(members || []);
       }
+
+      // Load my active matches in this ladder
+      const { data: myMatchesData } = await supabase
+        .from('matches')
+        .select('*')
+        .eq('ladder_id', ladderId)
+        .in('status', ['pending', 'accepted', 'score_submitted']);
+      
+      const filteredMatches = (myMatchesData || []).filter(m => {
+        const isParticipant = (isSingles && (m.challenger_id === user?.id || m.defender_id === user?.id)) ||
+                            (!isSingles && myTeams.some(t => t.id === m.challenger_team_id || t.id === m.defender_team_id));
+        return isParticipant;
+      });
+      setMyMatches(filteredMatches);
     } catch (err) {
       console.error(err);
     } finally {
@@ -166,6 +181,7 @@ export default function LadderView() {
       });
       if (error) throw error;
       setChallengeTarget(null);
+      await load(); // Reload to update UI
     } catch (err: any) {
       setChallengeErr(err.message || 'Failed to send challenge.');
     } finally {
@@ -314,11 +330,14 @@ export default function LadderView() {
                 : (entry.teams?.name || 'Unnamed Team');
 
               const subText = isSingles
-                ? `${entry.wins}W – ${entry.losses}L`
+                ? `${entry.wins}W – ${entry.losses}L · ELO: ${entry.profiles?.elo_rating || 800}`
                 : (() => {
                     const p1 = entry.teams?.profiles_player1?.nickname || entry.teams?.profiles_player1?.first_name || '?';
                     const p2 = entry.teams?.profiles_player2?.nickname || entry.teams?.profiles_player2?.first_name || '?';
-                    return `${p1} & ${p2} · ${entry.wins}W – ${entry.losses}L`;
+                    const p1dElo = entry.teams?.profiles_player1?.doubles_elo || 800;
+                    const p2dElo = entry.teams?.profiles_player2?.doubles_elo || 800;
+                    // Individual doubles ELOs shown as bragging rights only
+                    return `${p1} (${p1dElo}) & ${p2} (${p2dElo}) · ${entry.wins}W – ${entry.losses}L`;
                   })();
 
               const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
@@ -330,6 +349,11 @@ export default function LadderView() {
                 myRank !== null &&
                 entry.current_rank >= myRank - 2 &&
                 entry.current_rank < myRank;
+
+              const hasActiveMatch = myMatches.some(m => 
+                (isSingles && (m.challenger_id === entry.player_id || m.defender_id === entry.player_id)) ||
+                (!isSingles && (m.challenger_team_id === entry.team_id || m.defender_team_id === entry.team_id))
+              );
 
               return (
                 <div
@@ -350,17 +374,26 @@ export default function LadderView() {
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{subText}</div>
                   </div>
+                  {/* ELO badge for doubles */}
+                  {!isSingles && (
+                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7c3aed', backgroundColor: '#ede9fe', padding: '2px 8px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
+                      Team ELO: {entry.teams?.elo_rating || 800}
+                    </span>
+                  )}
                   {canChallenge && (
                     <button
-                      onClick={() => { setChallengeTarget(entry); setChallengeErr(''); }}
+                      onClick={() => { if (!hasActiveMatch) { setChallengeTarget(entry); setChallengeErr(''); } }}
+                      disabled={hasActiveMatch}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.3rem',
                         padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.8rem',
-                        backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74',
-                        cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
+                        backgroundColor: hasActiveMatch ? '#f3f4f6' : '#fff7ed', 
+                        color: hasActiveMatch ? '#9ca3af' : '#c2410c', 
+                        border: '1px solid ' + (hasActiveMatch ? '#e5e7eb' : '#fdba74'),
+                        cursor: hasActiveMatch ? 'default' : 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
                       }}
                     >
-                      <Swords size={13} /> Challenge
+                      <Swords size={13} /> {hasActiveMatch ? 'Already Challenged' : 'Challenge'}
                     </button>
                   )}
                 </div>

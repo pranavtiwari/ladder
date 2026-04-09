@@ -10,6 +10,8 @@ create table public.profiles (
   last_name text,
   nickname text,
   avatar_url text,
+  elo_rating integer default 800,   -- Singles ELO only
+  doubles_elo integer default 800,  -- Doubles ELO only (updated by doubles matches)
   primary key (id)
 );
 alter table public.profiles enable row level security;
@@ -93,6 +95,7 @@ create table public.teams (
   name text,
   player1_id uuid references public.profiles not null,
   player2_id uuid references public.profiles not null,
+  elo_rating integer default 800,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 alter table public.teams enable row level security;
@@ -160,3 +163,59 @@ create policy "Participants can create matches" on matches for insert with check
 
 -- Ensure correct privileges for all tables
 GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- ELO Rating update trigger
+create or replace function public.update_match_elo()
+returns trigger as $$
+declare
+  win_elo int;
+  lose_elo int;
+  expected_win numeric;
+  expected_lose numeric;
+  new_win_elo int;
+  new_lose_elo int;
+  k_factor int := 32;
+  loser_id uuid;
+  is_singles boolean;
+begin
+  if new.status = 'completed' and (old.status is null or old.status != 'completed') then
+    
+    if new.challenger_team_id is not null then
+      is_singles := false;
+      loser_id := case when new.winner_team_id = new.challenger_team_id then new.defender_team_id else new.challenger_team_id end;
+      
+      select elo_rating into win_elo from public.teams where id = new.winner_team_id;
+      select elo_rating into lose_elo from public.teams where id = loser_id;
+    else
+      is_singles := true;
+      loser_id := case when new.winner_id = new.challenger_id then new.defender_id else new.challenger_id end;
+      
+      select elo_rating into win_elo from public.profiles where id = new.winner_id;
+      select elo_rating into lose_elo from public.profiles where id = loser_id;
+    end if;
+
+    win_elo := coalesce(win_elo, 800);
+    lose_elo := coalesce(lose_elo, 800);
+
+    expected_win := 1.0 / (1.0 + power(10.0, (lose_elo - win_elo) / 400.0));
+    expected_lose := 1.0 / (1.0 + power(10.0, (win_elo - lose_elo) / 400.0));
+
+    new_win_elo := win_elo + round(k_factor * (1.0 - expected_win));
+    new_lose_elo := lose_elo + round(k_factor * (0.0 - expected_lose));
+
+    if is_singles then
+      update public.profiles set elo_rating = new_win_elo where id = new.winner_id;
+      update public.profiles set elo_rating = new_lose_elo where id = loser_id;
+    else
+      update public.teams set elo_rating = new_win_elo where id = new.winner_team_id;
+      update public.teams set elo_rating = new_lose_elo where id = loser_id;
+    end if;
+
+  end if;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_match_completed
+  after update of status on public.matches
+  for each row execute procedure public.update_match_elo();
