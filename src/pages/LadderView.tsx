@@ -20,6 +20,8 @@ export default function LadderView() {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState('');
+  const [ladderPlayersMap, setLadderPlayersMap] = useState<Map<string, number>>(new Map());
+  const [activeTeamId, setActiveTeamId] = useState<string>('');
 
   // For doubles team creation
   const [showCreateTeam, setShowCreateTeam] = useState(false);
@@ -30,6 +32,14 @@ export default function LadderView() {
 
   const [selectedTeam, setSelectedTeam] = useState('');
   const [myMatches, setMyMatches] = useState<any[]>([]);
+
+  // Sync activeTeamId when entries/myTeams change (must be before any early returns)
+  useEffect(() => {
+    const myTeamsInLadder = entries.filter((e: any) => myTeams.some((t: any) => t.id === e.team_id));
+    if (myTeamsInLadder.length > 0 && !myTeamsInLadder.find((e: any) => e.team_id === activeTeamId)) {
+      setActiveTeamId(myTeamsInLadder[0].team_id);
+    }
+  }, [entries, activeTeamId, myTeams]);
 
   // Challenge
   const [challengeTarget, setChallengeTarget] = useState<any>(null);
@@ -51,10 +61,12 @@ export default function LadderView() {
       if (lErr) throw lErr;
       setLadder(lad);
 
+      let loadedTeams = myTeams;
+
       if (lad.type === 'singles') {
         const { data: players } = await supabase
           .from('ladder_players')
-          .select('*, profiles(nickname, first_name, avatar_url, elo_rating)')
+          .select('*, profiles(nickname, first_name, avatar_url)')
           .eq('ladder_id', ladderId)
           .order('current_rank');
         setEntries(players || []);
@@ -63,10 +75,14 @@ export default function LadderView() {
       } else {
         const { data: teams } = await supabase
           .from('ladder_teams')
-          .select('*, teams(name, player1_id, player2_id, elo_rating, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, elo_rating, doubles_elo), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, elo_rating, doubles_elo))')
+          .select('*, teams(name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name))')
           .eq('ladder_id', ladderId)
-          .order('current_rank'); // current_rank is ELO-ordered by DB trigger
+          .order('current_rank'); 
         setEntries(teams || []);
+
+        const { data: lPlayers } = await supabase.from('ladder_players').select('*').eq('ladder_id', ladderId);
+        const lPMap = new Map((lPlayers || []).map((p: any) => [p.player_id, p.elo_rating]));
+        setLadderPlayersMap(lPMap);
 
         // My teams in this club
         const { data: mt } = await supabase
@@ -75,6 +91,7 @@ export default function LadderView() {
           .eq('club_id', id)
           .or(`player1_id.eq.${user?.id},player2_id.eq.${user?.id}`);
         setMyTeams(mt || []);
+        loadedTeams = mt || [];
 
         const meTeamIds = (mt || []).map((t: any) => t.id);
         const joined = (teams || []).find((lt: any) => meTeamIds.includes(lt.team_id));
@@ -95,10 +112,9 @@ export default function LadderView() {
         .select('*')
         .eq('ladder_id', ladderId)
         .in('status', ['pending', 'accepted', 'score_submitted']);
-      
       const filteredMatches = (myMatchesData || []).filter(m => {
-        const isParticipant = (isSingles && (m.challenger_id === user?.id || m.defender_id === user?.id)) ||
-                            (!isSingles && myTeams.some(t => t.id === m.challenger_team_id || t.id === m.defender_team_id));
+        const isParticipant = (lad.type === 'singles' && (m.challenger_id === user?.id || m.defender_id === user?.id)) ||
+                            (lad.type !== 'singles' && loadedTeams.some((t: any) => t.id === m.challenger_team_id || t.id === m.defender_team_id));
         return isParticipant;
       });
       setMyMatches(filteredMatches);
@@ -129,6 +145,19 @@ export default function LadderView() {
   async function createTeam(e: React.FormEvent) {
     e.preventDefault();
     setCreatingTeam(true);
+
+    // Check if the pair already exists in myTeams
+    const existingTeam = myTeams.find(
+      (t: any) => (t.player1_id === user?.id && t.player2_id === partner) ||
+                  (t.player1_id === partner && t.player2_id === user?.id)
+    );
+
+    if (existingTeam) {
+      alert(`You already have a team with this player (${existingTeam.name}). Please use it instead.`);
+      setCreatingTeam(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('teams')
@@ -153,11 +182,24 @@ export default function LadderView() {
     setJoining(true);
     setJoinError('');
     try {
+      // Find the team from 'myTeams'
+      const t = myTeams.find(t => t.id === selectedTeam);
+      
       const nextRank = entries.length + 1;
       const { error } = await supabase
         .from('ladder_teams')
         .insert({ ladder_id: ladderId, team_id: selectedTeam, current_rank: nextRank });
       if (error) throw error;
+      
+      // Attempt to ensure ladder_players exist for the team members to initialize individual ELO
+      if (t) {
+        // Safe to ignore unique constraint errors
+        await supabase.from('ladder_players').insert([
+          { ladder_id: ladderId, player_id: t.player1_id, current_rank: 0 },
+          { ladder_id: ladderId, player_id: t.player2_id, current_rank: 0 }
+        ]).select().then(() => {}); 
+      }
+
       await load();
     } catch (err: any) {
       setJoinError(err.message || 'Failed to join ladder.');
@@ -165,6 +207,8 @@ export default function LadderView() {
       setJoining(false);
     }
   }
+
+  const [challengeWithTeamId, setChallengeWithTeamId] = useState('');
 
   async function submitChallenge() {
     if (!challengeTarget) return;
@@ -176,7 +220,7 @@ export default function LadderView() {
         ladder_id: ladderId,
         ...(isSinglesLadder
           ? { challenger_id: user?.id, defender_id: challengeTarget.player_id }
-          : { challenger_team_id: myTeamInLadder?.team_id, defender_team_id: challengeTarget.team_id }),
+          : { challenger_team_id: challengeWithTeamId || myTeamsInLadder[0]?.team_id, defender_team_id: challengeTarget.team_id }),
         status: 'pending',
       });
       if (error) throw error;
@@ -194,10 +238,15 @@ export default function LadderView() {
 
   const isSingles = ladder.type === 'singles';
   const alreadyJoined = myRank !== null;
-  // For doubles: find which ladder_team entry belongs to the user
-  const myTeamInLadder = !isSingles
-    ? entries.find((e: any) => myTeams.some((t: any) => t.id === e.team_id))
-    : null;
+  // For doubles: find which ladder_team entries belong to the user
+  const myTeamsInLadder = !isSingles
+    ? entries.filter((e: any) => myTeams.some((t: any) => t.id === e.team_id))
+    : [];
+
+
+
+  const activeTeamEntry = myTeamsInLadder.find((e: any) => e.team_id === activeTeamId) || myTeamsInLadder[0];
+  const myActiveRank = isSingles ? myRank : (activeTeamEntry?.current_rank ?? null);
 
   return (
     <div style={{ maxWidth: '52rem', margin: '0 auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -217,9 +266,9 @@ export default function LadderView() {
           {ladder.rules && <p style={{ color: '#6b7280', marginTop: '0.5rem', fontSize: '0.875rem' }}>{ladder.rules}</p>}
         </div>
 
-        {!alreadyJoined && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
-            {isSingles ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
+          {isSingles ? (
+            !alreadyJoined ? (
               <button
                 className="btn"
                 style={{ backgroundColor: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
@@ -229,6 +278,30 @@ export default function LadderView() {
                 <UserPlus size={16} /> {joining ? 'Joining…' : 'Join Ladder'}
               </button>
             ) : (
+              <span style={{ padding: '0.4rem 0.9rem', borderRadius: '999px', backgroundColor: '#d1fae5', color: '#065f46', fontWeight: 600, fontSize: '0.85rem' }}>
+                ✅ You're in at rank #{myRank}
+              </span>
+            )
+          ) : (
+            <>
+              {alreadyJoined && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.8rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <span style={{ padding: '0.4rem 0.9rem', borderRadius: '999px', backgroundColor: '#d1fae5', color: '#065f46', fontWeight: 600, fontSize: '0.85rem' }}>
+                    ✅ {myTeamsInLadder.length > 1 ? 'Rank' : 'Your team is in at rank'} #{myActiveRank}
+                  </span>
+                  {myTeamsInLadder.length > 1 && (
+                    <select
+                      value={activeTeamId}
+                      onChange={e => setActiveTeamId(e.target.value)}
+                      style={{ padding: '0.35rem 0.6rem', border: '1px solid #d1fae5', backgroundColor: '#ecfdf5', color: '#065f46', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }}
+                    >
+                      {myTeamsInLadder.map((mt: any) => (
+                        <option key={mt.team_id} value={mt.team_id}>As {mt.teams?.name}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', alignItems: 'flex-end' }}>
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                   <select
@@ -236,8 +309,20 @@ export default function LadderView() {
                     onChange={e => setSelectedTeam(e.target.value)}
                     style={{ padding: '0.45rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
                   >
-                    <option value="">Select your team…</option>
-                    {myTeams.map((t: any) => (
+                    <option value="">Select a team to join…</option>
+                    {myTeams
+                      .filter((t: any) => {
+                        // Check if team id is already in ladder
+                        if (entries.find((e: any) => e.team_id === t.id)) return false;
+                        
+                        // Check if the pair is already in the ladder under a different team
+                        const pairMatch = entries.find((e: any) => 
+                          (e.teams?.player1_id === t.player1_id && e.teams?.player2_id === t.player2_id) ||
+                          (e.teams?.player1_id === t.player2_id && e.teams?.player2_id === t.player1_id)
+                        );
+                        return !pairMatch;
+                      })
+                      .map((t: any) => (
                       <option key={t.id} value={t.id}>{t.name || 'Unnamed Team'}</option>
                     ))}
                   </select>
@@ -257,16 +342,10 @@ export default function LadderView() {
                   <Plus size={14} /> Form a new team
                 </button>
               </div>
-            )}
-            {joinError && <p style={{ color: '#dc2626', fontSize: '0.8rem' }}>{joinError}</p>}
-          </div>
-        )}
-
-        {alreadyJoined && (
-          <span style={{ padding: '0.4rem 0.9rem', borderRadius: '999px', backgroundColor: '#d1fae5', color: '#065f46', fontWeight: 600, fontSize: '0.85rem' }}>
-            ✅ You're in at rank #{myRank}
-          </span>
-        )}
+            </>
+          )}
+          {joinError && <p style={{ color: '#dc2626', fontSize: '0.8rem' }}>{joinError}</p>}
+        </div>
       </div>
 
       {/* Form new team panel */}
@@ -330,25 +409,24 @@ export default function LadderView() {
                 : (entry.teams?.name || 'Unnamed Team');
 
               const subText = isSingles
-                ? `${entry.wins}W – ${entry.losses}L · ELO: ${entry.profiles?.elo_rating || 800}`
+                ? `${entry.wins}W – ${entry.losses}L · ELO: ${entry.elo_rating ?? 800}`
                 : (() => {
                     const p1 = entry.teams?.profiles_player1?.nickname || entry.teams?.profiles_player1?.first_name || '?';
                     const p2 = entry.teams?.profiles_player2?.nickname || entry.teams?.profiles_player2?.first_name || '?';
-                    const p1dElo = entry.teams?.profiles_player1?.doubles_elo || 800;
-                    const p2dElo = entry.teams?.profiles_player2?.doubles_elo || 800;
-                    // Individual doubles ELOs shown as bragging rights only
+                    const p1dElo = ladderPlayersMap.get(entry.teams?.player1_id) ?? 800;
+                    const p2dElo = ladderPlayersMap.get(entry.teams?.player2_id) ?? 800;
                     return `${p1} (${p1dElo}) & ${p2} (${p2dElo}) · ${entry.wins}W – ${entry.losses}L`;
                   })();
 
               const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
 
-              // Show challenge button only for entries 1 or 2 ranks above the user
+              // Show challenge button only for entries 1 or 2 ranks above the active team/user
               const canChallenge =
                 !isMe &&
                 alreadyJoined &&
-                myRank !== null &&
-                entry.current_rank >= myRank - 2 &&
-                entry.current_rank < myRank;
+                myActiveRank !== null &&
+                entry.current_rank >= myActiveRank - 2 &&
+                entry.current_rank < myActiveRank;
 
               const hasActiveMatch = myMatches.some(m => 
                 (isSingles && (m.challenger_id === entry.player_id || m.defender_id === entry.player_id)) ||
@@ -377,12 +455,20 @@ export default function LadderView() {
                   {/* ELO badge for doubles */}
                   {!isSingles && (
                     <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7c3aed', backgroundColor: '#ede9fe', padding: '2px 8px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
-                      Team ELO: {entry.teams?.elo_rating || 800}
+                      Team ELO: {entry.elo_rating ?? 800}
                     </span>
                   )}
                   {canChallenge && (
                     <button
-                      onClick={() => { if (!hasActiveMatch) { setChallengeTarget(entry); setChallengeErr(''); } }}
+                      onClick={() => {
+                        if (!hasActiveMatch) {
+                          setChallengeTarget(entry);
+                          setChallengeErr('');
+                          if (!isSingles) {
+                            setChallengeWithTeamId(activeTeamId || myTeamsInLadder[0]?.team_id);
+                          }
+                        }
+                      }}
                       disabled={hasActiveMatch}
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.3rem',
@@ -423,6 +509,20 @@ export default function LadderView() {
               </strong>{' '}
               (rank #{challengeTarget.current_rank}) in <strong>{ladder.name}</strong>.
             </p>
+            {!isSingles && myTeamsInLadder.length > 1 && (
+              <div style={{ marginBottom: '1.25rem' }}>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.35rem' }}>Challenge As Team</label>
+                <select
+                  value={challengeWithTeamId}
+                  onChange={e => setChallengeWithTeamId(e.target.value)}
+                  style={{ width: '100%', padding: '0.55rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+                >
+                  {myTeamsInLadder.map((mt: any) => (
+                    <option key={mt.team_id} value={mt.team_id}>{mt.teams?.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             {challengeErr && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{challengeErr}</p>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
               <button className="btn btn-outline" onClick={() => setChallengeTarget(null)}>Cancel</button>

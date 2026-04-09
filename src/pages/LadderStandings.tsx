@@ -9,13 +9,27 @@ const SPORT_ICONS: Record<string, string> = {
   'Squash': '🟡', 'Pickle Ball': '🥒', 'Paddle': '🏏',
 };
 
+// A "grouped" entry represents one ladder in the left pane.
+// For doubles, it may contain multiple team entries.
+interface GroupedLadder {
+  ladder_id: string;
+  kind: 'singles' | 'doubles';
+  ladders: any;          // the ladder object
+  entries: any[];        // all user's entries for this ladder (1 for singles, 1+ for doubles)
+  activeTeamId: string;  // currently selected team_id (doubles only)
+}
+
 export default function LadderStandings() {
   const { user } = useAuth();
-  const [myLadders, setMyLadders] = useState<any[]>([]);
+  const [grouped, setGrouped] = useState<GroupedLadder[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selected, setSelected] = useState<any>(null);
-  const [entries, setEntries] = useState<any[]>([]);
+
+  // The selected GroupedLadder (which ladder is highlighted)
+  const [selected, setSelected] = useState<GroupedLadder | null>(null);
+  // Standings rows for the selected ladder
+  const [standings, setStandings] = useState<any[]>([]);
   const [myRank, setMyRank] = useState<number | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   // Challenge modal
   const [showChallenge, setShowChallenge] = useState(false);
@@ -30,12 +44,76 @@ export default function LadderStandings() {
   async function loadMyLadders() {
     setLoading(true);
     try {
-      const { data } = await supabase
+      // --- Singles ---
+      const { data: singlesData } = await supabase
         .from('ladder_players')
         .select('ladder_id, current_rank, wins, losses, ladders(id, name, sport, type, club_id, clubs(name))')
-        .eq('player_id', user?.id);
-      setMyLadders(data || []);
-      if (data && data.length > 0) selectLadder(data[0]);
+        .eq('player_id', user?.id)
+        .neq('current_rank', 0); // rank 0 = ELO placeholder rows
+
+      // --- Doubles (player1 and player2 separately, then merge) ---
+      const { data: d1 } = await supabase
+        .from('ladder_teams')
+        .select('ladder_id, team_id, current_rank, wins, losses, ladders(id, name, sport, type, club_id, clubs(name)), teams(id, name, player1_id, player2_id)')
+        .filter('teams.player1_id', 'eq', user?.id);
+
+      const { data: d2 } = await supabase
+        .from('ladder_teams')
+        .select('ladder_id, team_id, current_rank, wins, losses, ladders(id, name, sport, type, club_id, clubs(name)), teams(id, name, player1_id, player2_id)')
+        .filter('teams.player2_id', 'eq', user?.id);
+
+      const seenKey = new Set<string>();
+      const doublesEntries = [...(d1 || []), ...(d2 || [])]
+        .filter((e: any) => {
+          if (!e.teams) return false;
+          const key = `${e.ladder_id}-${e.team_id}`;
+          if (seenKey.has(key)) return false;
+          seenKey.add(key);
+          return true;
+        })
+        .map((e: any) => ({ ...e, kind: 'doubles' as const }));
+
+      const doublesLadderIds = new Set(doublesEntries.map((e: any) => e.ladder_id));
+
+      // Exclude singles entries that belong to a doubles ladder (ELO scaffolding rows)
+      const singlesEntries = (singlesData || [])
+        .filter((e: any) => !doublesLadderIds.has(e.ladder_id))
+        .map((e: any) => ({ ...e, kind: 'singles' as const }));
+
+      // --- Group by ladder_id ---
+      const groupMap = new Map<string, GroupedLadder>();
+
+      for (const e of singlesEntries) {
+        groupMap.set(e.ladder_id, {
+          ladder_id: e.ladder_id,
+          kind: 'singles',
+          ladders: e.ladders,
+          entries: [e],
+          activeTeamId: '',
+        });
+      }
+
+      for (const e of doublesEntries) {
+        if (groupMap.has(e.ladder_id)) {
+          groupMap.get(e.ladder_id)!.entries.push(e);
+        } else {
+          groupMap.set(e.ladder_id, {
+            ladder_id: e.ladder_id,
+            kind: 'doubles',
+            ladders: e.ladders,
+            entries: [e],
+            activeTeamId: e.team_id,
+          });
+        }
+        // Ensure activeTeamId is set to the first entry
+        if (!groupMap.get(e.ladder_id)!.activeTeamId) {
+          groupMap.get(e.ladder_id)!.activeTeamId = e.team_id;
+        }
+      }
+
+      const all = Array.from(groupMap.values());
+      setGrouped(all);
+      if (all.length > 0) await selectLadder(all[0]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -43,32 +121,63 @@ export default function LadderStandings() {
     }
   }
 
-  async function selectLadder(entry: any) {
-    setSelected(entry);
-    const { data } = await supabase
-      .from('ladder_players')
-      .select('*, profiles(nickname, first_name, avatar_url)')
-      .eq('ladder_id', entry.ladder_id)
-      .order('current_rank');
-    setEntries(data || []);
-    const me = (data || []).find((e: any) => e.player_id === user?.id);
-    setMyRank(me?.current_rank ?? null);
+  async function selectLadder(group: GroupedLadder) {
+    setSelected(group);
+    setLoadingDetails(true);
+    try {
+      if (group.kind === 'singles') {
+        const { data } = await supabase
+          .from('ladder_players')
+          .select('*, profiles(nickname, first_name, avatar_url)')
+          .eq('ladder_id', group.ladder_id)
+          .gt('current_rank', 0)
+          .order('current_rank');
+        setStandings(data || []);
+        const me = (data || []).find((e: any) => e.player_id === user?.id);
+        setMyRank(me?.current_rank ?? null);
+      } else {
+        const { data } = await supabase
+          .from('ladder_teams')
+          .select('*, teams(id, name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, avatar_url), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, avatar_url))')
+          .eq('ladder_id', group.ladder_id)
+          .order('current_rank');
+        setStandings(data || []);
+        // My rank = rank of the currently active team
+        const activeTeamEntry = (data || []).find((e: any) => e.team_id === group.activeTeamId);
+        setMyRank(activeTeamEntry?.current_rank ?? null);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingDetails(false);
+    }
   }
 
-  function openChallenge(target: any) {
-    setChallengeTarget(target);
-    setChallengeMsg('');
-    setShowChallenge(true);
+  // Update which team is "active" in the left pane without re-fetching standings
+  function setActiveTeam(ladderId: string, teamId: string) {
+    setGrouped(prev => prev.map(g =>
+      g.ladder_id === ladderId ? { ...g, activeTeamId: teamId } : g
+    ));
+    // Also update selected so the challenge modal uses the right team
+    if (selected?.ladder_id === ladderId) {
+      const updated = { ...selected, activeTeamId: teamId };
+      setSelected(updated);
+      // Update myRank to reflect the newly selected team
+      const activeEntry = standings.find((e: any) => e.team_id === teamId);
+      setMyRank(activeEntry?.current_rank ?? null);
+    }
   }
 
   async function submitChallenge() {
     if (!selected || !challengeTarget) return;
     setSubmitting(true);
     try {
+      const isSingles = selected.kind === 'singles';
       const { error } = await supabase.from('matches').insert({
         ladder_id: selected.ladder_id,
-        challenger_id: user?.id,
-        defender_id: challengeTarget.player_id,
+        ...(isSingles
+          ? { challenger_id: user?.id, defender_id: challengeTarget.player_id }
+          : { challenger_team_id: selected.activeTeamId, defender_team_id: challengeTarget.team_id }),
         status: 'pending',
       });
       if (error) throw error;
@@ -83,10 +192,10 @@ export default function LadderStandings() {
   if (loading) return <div style={{ padding: '2rem', color: '#6b7280' }}>Loading…</div>;
 
   return (
-    <div className="flex-col gap-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <h1 className="page-title" style={{ marginBottom: 0 }}>My Ladders</h1>
 
-      {myLadders.length === 0 ? (
+      {grouped.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
           <Trophy size={40} style={{ color: '#d1d5db', margin: '0 auto 1rem' }} />
           <p style={{ color: '#6b7280', marginBottom: '1rem' }}>You haven't joined any ladders yet.</p>
@@ -95,90 +204,212 @@ export default function LadderStandings() {
           </Link>
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-          {/* Ladder picker */}
-          <div style={{ minWidth: '220px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {myLadders.map((entry: any) => {
-              const l = entry.ladders;
-              const isActive = selected?.ladder_id === entry.ladder_id;
+        <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'flex-start' }}>
+
+          {/* ── Left: scrollable ladder list ── */}
+          <div style={{
+            width: '240px',
+            flexShrink: 0,
+            maxHeight: 'calc(100vh - 160px)',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+            paddingRight: '0.25rem',
+          }}>
+            {grouped.map((group) => {
+              const l = group.ladders;
+              const isDoubles = group.kind === 'doubles';
+              const isActive = selected?.ladder_id === group.ladder_id;
+              const multiTeam = isDoubles && group.entries.length > 1;
+              const activeEntry = group.entries.find(e => e.team_id === group.activeTeamId) ?? group.entries[0];
+              const rankLabel = `Rank #${activeEntry.current_rank} · ${activeEntry.wins}W–${activeEntry.losses}L`;
+
               return (
-                <button
-                  key={entry.ladder_id}
-                  onClick={() => selectLadder(entry)}
+                <div
+                  key={group.ladder_id}
+                  onClick={() => selectLadder({ ...group })}
                   style={{
-                    textAlign: 'left', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer',
+                    padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer',
                     border: `2px solid ${isActive ? 'var(--primary-color)' : '#e5e7eb'}`,
                     backgroundColor: isActive ? '#eef2ff' : 'white',
                     transition: 'all 0.15s',
                   }}
                 >
                   <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.9rem' }}>{l?.name}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#6b7280' }}>{l?.clubs?.name} · {SPORT_ICONS[l?.sport]} {l?.sport}</div>
-                  <div style={{ fontSize: '0.78rem', marginTop: '0.2rem', color: '#4f46e5', fontWeight: 600 }}>Rank #{entry.current_rank} · {entry.wins}W–{entry.losses}L</div>
-                </button>
+                  <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.15rem' }}>
+                    {l?.clubs?.name} · {SPORT_ICONS[l?.sport]} {l?.sport}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
+                    <span style={{
+                      fontSize: '0.7rem', fontWeight: 600, padding: '1px 7px', borderRadius: '999px',
+                      backgroundColor: isDoubles ? '#fce7f3' : '#dbeafe',
+                      color: isDoubles ? '#be185d' : '#1d4ed8',
+                    }}>
+                      {isDoubles ? '👥 Doubles' : '👤 Singles'}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: '#4f46e5', fontWeight: 600 }}>{rankLabel}</span>
+                  </div>
+
+                  {/* Team selector — only shown for doubles */}
+                  {isDoubles && (
+                    <div style={{ marginTop: '0.5rem' }} onClick={e => e.stopPropagation()}>
+                      {multiTeam ? (
+                        <select
+                          value={group.activeTeamId}
+                          onChange={e => {
+                            setActiveTeam(group.ladder_id, e.target.value);
+                            // If this ladder is already selected, re-select to update myRank
+                            if (selected?.ladder_id === group.ladder_id) {
+                              /* myRank updated in setActiveTeam */
+                            } else {
+                              selectLadder({ ...group, activeTeamId: e.target.value });
+                            }
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '0.3rem 0.5rem',
+                            fontSize: '0.78rem',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '6px',
+                            backgroundColor: isActive ? '#eef2ff' : 'white',
+                            color: '#374151',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          {group.entries.map((e: any) => (
+                            <option key={e.team_id} value={e.team_id}>
+                              🤝 {e.teams?.name || 'Unnamed Team'}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                          🤝 {activeEntry.teams?.name || 'Unnamed Team'}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
 
-          {/* Standings */}
+          {/* ── Right: standings detail ── */}
           {selected && (
-            <div style={{ flex: 1, minWidth: '280px' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                {/* Header */}
                 <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div>
                     <div style={{ fontWeight: 700, color: '#111827' }}>{selected.ladders?.name}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{selected.ladders?.clubs?.name}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                      {selected.ladders?.clubs?.name}
+                      {selected.kind === 'doubles' && (() => {
+                        const ae = selected.entries.find((e: any) => e.team_id === selected.activeTeamId) ?? selected.entries[0];
+                        return ae?.teams?.name ? ` · Playing as ${ae.teams.name}` : '';
+                      })()}
+                    </div>
                   </div>
                   <Link
                     to={`/clubs/${selected.ladders?.club_id}/ladders/${selected.ladder_id}`}
-                    style={{ fontSize: '0.8rem', color: 'var(--primary-color)', textDecoration: 'none' }}
+                    style={{ fontSize: '0.8rem', color: 'var(--primary-color)', textDecoration: 'none', whiteSpace: 'nowrap' }}
                   >
                     Full page →
                   </Link>
                 </div>
-                {entries.map((e: any, i: number) => {
-                  const isMe = e.player_id === user?.id;
-                  const name = e.profiles?.nickname || e.profiles?.first_name || '—';
-                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-                  const canChallenge = !isMe && myRank !== null && e.current_rank < myRank;
-                  return (
-                    <div
-                      key={e.id}
-                      style={{
+
+                {/* Standings rows */}
+                {loadingDetails ? (
+                  <div style={{ padding: '2rem', color: '#6b7280', textAlign: 'center' }}>Loading standings…</div>
+                ) : standings.length === 0 ? (
+                  <div style={{ padding: '2rem', color: '#9ca3af', textAlign: 'center' }}>No entries yet.</div>
+                ) : selected.kind === 'singles' ? (
+                  standings.map((e: any, i: number) => {
+                    const isMe = e.player_id === user?.id;
+                    const name = e.profiles?.nickname || e.profiles?.first_name || '—';
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                    const canChallenge = !isMe && myRank !== null && e.current_rank < myRank;
+                    return (
+                      <div key={e.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',
                         padding: '0.65rem 1.25rem',
                         backgroundColor: isMe ? '#f0fdf4' : 'transparent',
-                        borderBottom: i < entries.length - 1 ? '1px solid #f9fafb' : 'none',
-                      }}
-                    >
-                      <span style={{ minWidth: '2rem', fontWeight: 700, color: '#374151' }}>
-                        {medal || `#${e.current_rank}`}
-                      </span>
-                      {e.profiles?.avatar_url
-                        ? <img src={e.profiles.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
-                        : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? '#065f46' : '#111827', fontSize: '0.9rem' }}>
-                          {name} {isMe ? '(you)' : ''}
+                        borderBottom: i < standings.length - 1 ? '1px solid #f9fafb' : 'none',
+                      }}>
+                        <span style={{ minWidth: '2rem', fontWeight: 700, color: '#374151' }}>
+                          {medal || `#${e.current_rank}`}
+                        </span>
+                        {e.profiles?.avatar_url
+                          ? <img src={e.profiles.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
+                          : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb', flexShrink: 0 }} />}
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? '#065f46' : '#111827', fontSize: '0.9rem' }}>
+                            {name} {isMe ? '(you)' : ''}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{e.wins}W – {e.losses}L</div>
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{e.wins}W – {e.losses}L</div>
+                        {canChallenge && (
+                          <button
+                            onClick={() => { setChallengeTarget(e); setChallengeMsg(''); setShowChallenge(true); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '0.3rem',
+                              padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.78rem',
+                              backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74',
+                              cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <Swords size={13} /> Challenge
+                          </button>
+                        )}
                       </div>
-                      {canChallenge && (
-                        <button
-                          onClick={() => openChallenge(e)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: '0.3rem',
-                            padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.78rem',
-                            backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74',
-                            cursor: 'pointer', fontWeight: 600,
-                          }}
-                        >
-                          <Swords size={13} /> Challenge
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                ) : (
+                  standings.map((e: any, i: number) => {
+                    const myTeamIds = new Set(selected.entries.map((en: any) => en.team_id));
+                    const isMe = myTeamIds.has(e.team_id);
+                    const teamName = e.teams?.name || 'Unnamed Team';
+                    const p1 = e.teams?.profiles_player1?.nickname || e.teams?.profiles_player1?.first_name || '?';
+                    const p2 = e.teams?.profiles_player2?.nickname || e.teams?.profiles_player2?.first_name || '?';
+                    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                    // Can only challenge if NOT one of my teams
+                    const canChallenge = !isMe && myRank !== null && e.current_rank < myRank;
+                    return (
+                      <div key={e.id} style={{
+                        display: 'flex', alignItems: 'center', gap: '0.75rem',
+                        padding: '0.65rem 1.25rem',
+                        backgroundColor: isMe ? '#f0fdf4' : 'transparent',
+                        borderBottom: i < standings.length - 1 ? '1px solid #f9fafb' : 'none',
+                      }}>
+                        <span style={{ minWidth: '2rem', fontWeight: 700, color: '#374151' }}>
+                          {medal || `#${e.current_rank}`}
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? '#065f46' : '#111827', fontSize: '0.9rem' }}>
+                            {teamName} {isMe ? '(you)' : ''}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
+                            {p1} &amp; {p2} · {e.wins}W – {e.losses}L · ELO: {e.elo_rating ?? 800}
+                          </div>
+                        </div>
+                        {canChallenge && (
+                          <button
+                            onClick={() => { setChallengeTarget(e); setChallengeMsg(''); setShowChallenge(true); }}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: '0.3rem',
+                              padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.78rem',
+                              backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74',
+                              cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
+                            }}
+                          >
+                            <Swords size={13} /> Challenge
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
           )}
@@ -194,7 +425,13 @@ export default function LadderStandings() {
             </button>
             <h2 style={{ fontWeight: 700, fontSize: '1.15rem', color: '#111827', marginBottom: '0.5rem' }}>Send Challenge</h2>
             <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-              You are challenging <strong>{challengeTarget.profiles?.nickname || challengeTarget.profiles?.first_name}</strong> (rank #{challengeTarget.current_rank}) in <strong>{selected?.ladders?.name}</strong>.
+              You are challenging{' '}
+              <strong>
+                {selected?.kind === 'singles'
+                  ? (challengeTarget.profiles?.nickname || challengeTarget.profiles?.first_name)
+                  : (challengeTarget.teams?.name || 'this team')}
+              </strong>{' '}
+              (rank #{challengeTarget.current_rank}) in <strong>{selected?.ladders?.name}</strong>.
             </p>
             {challengeMsg && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{challengeMsg}</p>}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>

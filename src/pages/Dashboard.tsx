@@ -156,13 +156,21 @@ export default function Dashboard() {
     if (!recordingMatch || !winnerId) return;
     setSubmittingScore(true);
     try {
-      const { error } = await supabase.from('matches').update({
+      const isSingles = recordingMatch.ladders?.type === 'singles';
+      const payload: any = {
         score_text: scoreText,
-        winner_id: winnerId,
         status: 'score_submitted',
         score_submitted_by: user?.id,
         score_submitted_at: new Date().toISOString()
-      }).eq('id', recordingMatch.id);
+      };
+
+      if (isSingles) {
+        payload.winner_id = winnerId;
+      } else {
+        payload.winner_team_id = winnerId;
+      }
+
+      const { error } = await supabase.from('matches').update(payload).eq('id', recordingMatch.id);
       if (error) throw error;
       setRecordingMatch(null);
       setScoreText('');
@@ -202,7 +210,9 @@ export default function Dashboard() {
     }
   }
 
-  const totalActions = joinRequests.length + pendingChallenges.filter((m: any) => m.defender_id === user?.id).length + pendingScores.length + confirmations.length;
+  const totalActions = joinRequests.length + 
+    pendingChallenges.filter((m: any) => m.defender_id === user?.id || (m.defender_team && (m.defender_team.player1_id === user?.id || m.defender_team.player2_id === user?.id))).length + 
+    pendingScores.length + confirmations.length;
 
   function displayName(p: any) {
     return p?.nickname || p?.first_name || '—';
@@ -269,27 +279,37 @@ export default function Dashboard() {
             })}
 
             {/* Incoming challenges (user is the defender) */}
-            {pendingChallenges.filter((m: any) => m.defender_id === user?.id).map(match => (
-              <div key={match.id} style={{ padding: '0.85rem 1rem', backgroundColor: '#fff7ed', borderRadius: 'var(--radius-md)', border: '1px solid #fed7aa', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
-                  <Swords size={20} color="#c2410c" />
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Match Challenge</div>
-                    <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-                      <strong>{displayName(match.challenger)}</strong> challenged you in <strong>{match.ladders?.name}</strong> ({match.ladders?.clubs?.name})
+            {pendingChallenges.filter((m: any) => 
+              m.defender_id === user?.id || 
+              (m.defender_team && (m.defender_team.player1_id === user?.id || m.defender_team.player2_id === user?.id))
+            ).map(match => {
+              const challengerName = match.ladders?.type === 'singles' 
+                ? displayName(match.challenger) 
+                : (match.challenger_team?.name || 'A team');
+              const challengeSubject = match.ladders?.type === 'singles' ? 'you' : 'your team';
+              
+              return (
+                <div key={match.id} style={{ padding: '0.85rem 1rem', backgroundColor: '#fff7ed', borderRadius: 'var(--radius-md)', border: '1px solid #fed7aa', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <Swords size={20} color="#c2410c" />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Match Challenge</div>
+                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                        <strong>{challengerName}</strong> challenged {challengeSubject} in <strong>{match.ladders?.name}</strong> ({match.ladders?.clubs?.name})
+                      </div>
                     </div>
                   </div>
+                  <div className="flex gap-2">
+                    <button className="btn" style={{ backgroundColor: '#059669', color: 'white', padding: '0.3rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }} onClick={() => acceptChallenge(match.id)}>
+                      <CheckCircle size={14} /> Accept
+                    </button>
+                    <button className="btn btn-outline" style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.3rem' }} onClick={() => declineChallenge(match.id)}>
+                      <XCircle size={14} /> Decline
+                    </button>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <button className="btn" style={{ backgroundColor: '#059669', color: 'white', padding: '0.3rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }} onClick={() => acceptChallenge(match.id)}>
-                    <CheckCircle size={14} /> Accept
-                  </button>
-                  <button className="btn btn-outline" style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.3rem' }} onClick={() => declineChallenge(match.id)}>
-                    <XCircle size={14} /> Decline
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Pending score recording */}
             {pendingScores.map(match => {
