@@ -13,6 +13,7 @@ export default function Dashboard() {
   const [pendingScores, setPendingScores] = useState<any[]>([]);
   const [confirmations, setConfirmations] = useState<any[]>([]);
   const [ranks, setRanks] = useState<any[]>([]);
+  const [ranksTitle, setRanksTitle] = useState<string>("My Ranks");
   const [processingReq, setProcessingReq] = useState<string | null>(null);
 
   // Score recording
@@ -29,6 +30,11 @@ export default function Dashboard() {
       loadRanks();
     }
   }, [user]);
+
+  useEffect(() => {
+    const titles = ["My Court Cred", "The Rung Report", "Bragging Rights", "Smash Stats", "Bump Status", "String Tension & Standings"];
+    setRanksTitle(titles[Math.floor(Math.random() * titles.length)]);
+  }, []);
 
   async function loadClubs() {
     setLoadingClubs(true);
@@ -294,7 +300,7 @@ export default function Dashboard() {
       {/* Action Required */}
       <section className="card">
         <h2 className="section-title">
-          Action Required {totalActions > 0 && (
+          Your Serve {totalActions > 0 && (
             <span style={{ marginLeft: '0.5rem', padding: '1px 8px', borderRadius: '999px', backgroundColor: '#ef4444', color: 'white', fontSize: '0.75rem', fontWeight: 700 }}>
               {totalActions}
             </span>
@@ -470,7 +476,7 @@ export default function Dashboard() {
       <div className="flex gap-6 mt-4" style={{ flexWrap: 'wrap' }}>
         {/* My Clubs */}
         <section className="card" style={{ flex: '1 1 300px' }}>
-          <h2 className="section-title">My Clubs</h2>
+          <h2 className="section-title">Stomping Grounds</h2>
           {loadingClubs ? (
             <p className="text-light text-sm">Loading…</p>
           ) : clubs.length === 0 ? (
@@ -503,7 +509,7 @@ export default function Dashboard() {
 
         {/* My Ranks */}
         <section className="card" style={{ flex: '1 1 300px' }}>
-          <h2 className="section-title">My Ranks</h2>
+          <h2 className="section-title">{ranksTitle}</h2>
           {ranks.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '1rem 0' }}>
               <p style={{ color: '#6b7280', marginBottom: '0.75rem', fontSize: '0.9rem' }}>You haven't joined any ladders yet.</p>

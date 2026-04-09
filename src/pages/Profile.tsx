@@ -7,6 +7,7 @@ export default function Profile() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   
   const [profile, setProfile] = useState({
@@ -79,6 +80,53 @@ export default function Profile() {
     }
   }
 
+  async function handleUploadAvatar(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files || e.target.files.length === 0 || !user) {
+      return;
+    }
+    const file = e.target.files[0];
+    
+    try {
+      setUploadingAvatar(true);
+      setMessage({ text: '', type: '' });
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError, data } = await supabase.storage
+        .from('avatars')
+        .upload(fileName, file, { upsert: true });
+
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(fileName);
+
+      const avatar_url = urlData.publicUrl;
+
+      // Update local state
+      setProfile({ ...profile, avatar_url });
+
+      // Automatically persist it to profiles
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ avatar_url })
+        .eq('id', user.id);
+
+      if (updateError) throw updateError;
+      
+      setMessage({ text: 'Avatar uploaded successfully!', type: 'success' });
+    } catch (error: any) {
+      console.error('Error uploading avatar:', error);
+      setMessage({ text: error.message || 'Failed to upload avatar', type: 'error' });
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex justify-center items-center h-full" style={{ padding: '2rem' }}>
@@ -97,16 +145,37 @@ export default function Profile() {
 
       <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', marginBottom: '2rem' }}>
-          <div style={{ flexShrink: 0 }}>
-            {profile.avatar_url ? (
-               <img 
-                 src={profile.avatar_url} 
-                 alt="Avatar" 
-                 style={{ height: '6rem', width: '6rem', objectFit: 'cover', borderRadius: '9999px', border: '4px solid #f3f4f6' }} 
-               />
-            ) : (
-               <UserCircle size={96} color="#d1d5db" />
-            )}
+          <div style={{ flexShrink: 0, position: 'relative' }}>
+            <label htmlFor="avatar_upload" style={{ cursor: 'pointer', display: 'block', position: 'relative' }}>
+              {profile.avatar_url ? (
+                 <img 
+                   src={profile.avatar_url} 
+                   alt="Avatar" 
+                   style={{ height: '6rem', width: '6rem', objectFit: 'cover', borderRadius: '9999px', border: '4px solid #f3f4f6', opacity: uploadingAvatar ? 0.5 : 1 }} 
+                 />
+              ) : (
+                 <UserCircle size={96} color="#d1d5db" style={{ opacity: uploadingAvatar ? 0.5 : 1 }} />
+              )}
+              {uploadingAvatar && (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: '0.8rem', fontWeight: 600 }}>
+                  ...
+                </div>
+              )}
+              <div style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: 'white', borderRadius: '50%', padding: '0.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                  <circle cx="12" cy="13" r="4"></circle>
+                </svg>
+              </div>
+            </label>
+            <input 
+              type="file" 
+              id="avatar_upload" 
+              accept="image/*" 
+              style={{ display: 'none' }} 
+              onChange={handleUploadAvatar}
+              disabled={uploadingAvatar}
+            />
           </div>
           <div>
             <h2 className="text-xl font-semibold text-gray-900" style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827' }}>
