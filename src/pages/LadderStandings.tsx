@@ -192,7 +192,7 @@ export default function LadderStandings() {
     }
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: '#6b7280' }}>Loading…</div>;
+  if (loading) return <div style={{ padding: '2rem', color: 'var(--text-light)' }}>Loading…</div>;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
@@ -201,7 +201,7 @@ export default function LadderStandings() {
       {grouped.length === 0 ? (
         <div className="card" style={{ textAlign: 'center', padding: '2.5rem' }}>
           <Trophy size={40} style={{ color: '#d1d5db', margin: '0 auto 1rem' }} />
-          <p style={{ color: '#6b7280', marginBottom: '1rem' }}>You haven't joined any ladders yet.</p>
+          <p style={{ color: 'var(--text-light)', marginBottom: '1rem' }}>You haven't joined any ladders yet.</p>
           <Link to="/clubs" style={{ textDecoration: 'none', backgroundColor: 'var(--primary-color)', color: 'white', padding: '0.5rem 1.25rem', borderRadius: '6px', fontWeight: 600 }}>
             Browse Clubs &amp; Ladders
           </Link>
@@ -233,25 +233,36 @@ export default function LadderStandings() {
                   key={group.ladder_id}
                   onClick={() => selectLadder({ ...group })}
                   style={{
-                    padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer',
-                    border: `2px solid ${isActive ? 'var(--primary-color)' : '#e5e7eb'}`,
-                    backgroundColor: isActive ? '#eef2ff' : 'white',
-                    transition: 'all 0.15s',
+                    padding: '1rem',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    border: `1px solid ${isActive ? 'var(--primary-color)' : 'rgba(255, 255, 255, 0.1)'}`,
+                    backgroundColor: isActive ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                    transition: 'all 0.2s ease',
+                    boxShadow: isActive ? '0 0 15px rgba(34, 197, 94, 0.1)' : 'none',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.07)';
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.03)';
                   }}
                 >
-                  <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.9rem' }}>{l?.name}</div>
-                  <div style={{ fontSize: '0.78rem', color: '#6b7280', marginTop: '0.15rem' }}>
+                  <div style={{ fontWeight: 700, color: 'var(--text-dark)', fontSize: '1rem', marginBottom: '0.2rem' }}>{l?.name}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.6)', marginTop: '0.15rem' }}>
                     {l?.clubs?.name} · {SPORT_ICONS[l?.sport]} {l?.sport}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: '0.7rem', fontWeight: 600, padding: '1px 7px', borderRadius: '999px',
-                      backgroundColor: isDoubles ? '#fce7f3' : '#dbeafe',
-                      color: isDoubles ? '#be185d' : '#1d4ed8',
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginTop: '0.3rem', flexWrap: 'wrap' }}>
+                    <span style={{ 
+                      fontSize: '0.8rem', 
+                      fontWeight: 600, 
+                      color: 'var(--text-light)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.02em'
                     }}>
                       {isDoubles ? '👥 Doubles' : '👤 Singles'}
                     </span>
-                    <span style={{ fontSize: '0.75rem', color: '#4f46e5', fontWeight: 600 }}>{rankLabel}</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--primary-color)', fontWeight: 700 }}>{rankLabel}</span>
                   </div>
 
                   {/* Team selector — only shown for doubles */}
@@ -271,13 +282,15 @@ export default function LadderStandings() {
                           }}
                           style={{
                             width: '100%',
-                            padding: '0.3rem 0.5rem',
+                            padding: '0.35rem 0.5rem',
                             fontSize: '0.78rem',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: '6px',
-                            backgroundColor: isActive ? '#eef2ff' : 'white',
-                            color: '#374151',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '8px',
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                            color: 'var(--text-dark)',
                             cursor: 'pointer',
+                            outline: 'none',
+                            transition: 'all 0.2s'
                           }}
                         >
                           {group.entries.map((e: any) => (
@@ -287,7 +300,7 @@ export default function LadderStandings() {
                           ))}
                         </select>
                       ) : (
-                        <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>
                           🤝 {activeEntry.teams?.name || 'Unnamed Team'}
                         </div>
                       )}
@@ -303,14 +316,14 @@ export default function LadderStandings() {
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
                 {/* Header */}
-                <div style={{ padding: '1rem 1.25rem', borderBottom: '1px solid #f3f4f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255, 255, 255, 0.02)' }}>
                   <div>
-                    <div style={{ fontWeight: 700, color: '#111827' }}>{selected.ladders?.name}</div>
-                    <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>
+                    <div style={{ fontWeight: 800, color: 'var(--text-dark)', fontSize: '1.1rem' }}>{selected.ladders?.name}</div>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--text-light)', marginTop: '0.2rem' }}>
                       {selected.ladders?.clubs?.name}
                       {selected.kind === 'doubles' && (() => {
                         const ae = selected.entries.find((e: any) => e.team_id === selected.activeTeamId) ?? selected.entries[0];
-                        return ae?.teams?.name ? ` · Playing as ${ae.teams.name}` : '';
+                        return ae?.teams?.name ? ` · 👥 ${ae.teams.name}` : '';
                       })()}
                     </div>
                   </div>
@@ -324,9 +337,9 @@ export default function LadderStandings() {
 
                 {/* Standings rows */}
                 {loadingDetails ? (
-                  <div style={{ padding: '2rem', color: '#6b7280', textAlign: 'center' }}>Loading standings…</div>
+                  <div style={{ padding: '3rem', color: 'var(--text-light)', textAlign: 'center' }}>Loading standings…</div>
                 ) : standings.length === 0 ? (
-                  <div style={{ padding: '2rem', color: '#9ca3af', textAlign: 'center' }}>No entries yet.</div>
+                  <div style={{ padding: '3rem', color: 'var(--text-light)', textAlign: 'center' }}>No entries yet.</div>
                 ) : selected.kind === 'singles' ? (
                   standings.map((e: any, i: number) => {
                     const isMe = e.player_id === user?.id;
@@ -338,20 +351,20 @@ export default function LadderStandings() {
                       <div key={e.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',
                         padding: '0.65rem 1.25rem',
-                        backgroundColor: isMe ? '#f0fdf4' : 'transparent',
-                        borderBottom: i < standings.length - 1 ? '1px solid #f9fafb' : 'none',
+                        backgroundColor: isMe ? 'rgba(34, 197, 94, 0.12)' : 'transparent',
+                        borderBottom: i < standings.length - 1 ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
                       }}>
-                        <span style={{ minWidth: '2rem', fontWeight: 700, color: '#374151' }}>
+                        <span style={{ minWidth: '2rem', fontWeight: 700, color: 'var(--text-dark)' }}>
                           {medal || `#${rank}`}
                         </span>
                         {e.profiles?.avatar_url
                           ? <img src={e.profiles.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
-                          : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb', flexShrink: 0 }} />}
+                          : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: 'var(--border-color)', flexShrink: 0 }} />}
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? '#065f46' : '#111827', fontSize: '0.9rem' }}>
+                          <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--primary-color)' : 'var(--text-dark)', fontSize: '0.9rem' }}>
                             {name} {isMe ? '(you)' : ''}
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{e.wins}W – {e.losses}L</div>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>{e.wins}W – {e.losses}L</div>
                         </div>
                         {canChallenge && (
                           <button
@@ -359,7 +372,7 @@ export default function LadderStandings() {
                             style={{
                               display: 'flex', alignItems: 'center', gap: '0.3rem',
                               padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.78rem',
-                              backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74',
+                              backgroundColor: 'rgba(249, 115, 22, 0.1)', color: '#fb923c', border: '1px solid #fb923c',
                               cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
                             }}
                           >
@@ -384,18 +397,18 @@ export default function LadderStandings() {
                       <div key={e.id} style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',
                         padding: '0.65rem 1.25rem',
-                        backgroundColor: isMe ? '#f0fdf4' : 'transparent',
-                        borderBottom: i < standings.length - 1 ? '1px solid #f9fafb' : 'none',
+                        backgroundColor: isMe ? 'rgba(34, 197, 94, 0.12)' : 'transparent',
+                        borderBottom: i < standings.length - 1 ? '1px solid rgba(255, 255, 255, 0.08)' : 'none',
                       }}>
-                        <span style={{ minWidth: '2rem', fontWeight: 700, color: '#374151' }}>
+                        <span style={{ minWidth: '2rem', fontWeight: 700, color: 'var(--text-dark)' }}>
                           {medal || `#${rank}`}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? '#065f46' : '#111827', fontSize: '0.9rem' }}>
+                          <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--primary-color)' : 'var(--text-dark)', fontSize: '0.9rem' }}>
                             {teamName} {isMe ? '(you)' : ''}
                           </div>
-                          <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>
-                            {p1} &amp; {p2} · {e.wins}W – {e.losses}L · ELO: {e.elo_rating ?? 800}
+                          <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
+                            {p1} &amp; {p2} · {e.wins}W – {e.losses}L · <span style={{ color: 'var(--accent-color)', fontWeight: 600 }}>ELO: {e.elo_rating ?? 800}</span>
                           </div>
                         </div>
                         {canChallenge && (
@@ -404,7 +417,7 @@ export default function LadderStandings() {
                             style={{
                               display: 'flex', alignItems: 'center', gap: '0.3rem',
                               padding: '0.3rem 0.7rem', borderRadius: '6px', fontSize: '0.78rem',
-                              backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fdba74',
+                              backgroundColor: 'rgba(249, 115, 22, 0.1)', color: '#fb923c', border: '1px solid #fb923c',
                               cursor: 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
                             }}
                           >
@@ -423,13 +436,13 @@ export default function LadderStandings() {
 
       {/* Challenge modal */}
       {showChallenge && challengeTarget && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
           <div className="card" style={{ width: '100%', maxWidth: '420px', position: 'relative' }}>
-            <button onClick={() => setShowChallenge(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button onClick={() => setShowChallenge(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
               <X size={20} />
             </button>
-            <h2 style={{ fontWeight: 700, fontSize: '1.15rem', color: '#111827', marginBottom: '0.5rem' }}>Send Challenge</h2>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+            <h2 style={{ fontWeight: 700, fontSize: '1.15rem', color: 'var(--text-dark)', marginBottom: '0.5rem' }}>Send Challenge</h2>
+            <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
               You are challenging{' '}
               <strong>
                 {selected?.kind === 'singles'
@@ -445,7 +458,7 @@ export default function LadderStandings() {
               </button>
               <button
                 className="btn"
-                style={{ backgroundColor: '#c2410c', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                style={{ backgroundColor: '#ea580c', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                 disabled={submitting}
                 onClick={submitChallenge}
               >

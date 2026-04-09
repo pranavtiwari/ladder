@@ -71,7 +71,7 @@ export default function ClubDetails() {
   }
 
   if (loading) {
-    return <div className="flex justify-center p-8 text-gray-500">Loading clubs...</div>;
+    return <div className="flex justify-center p-8" style={{ color: 'var(--text-light)' }}>Loading clubs...</div>;
   }
 
   return (
@@ -158,11 +158,17 @@ export default function ClubDetails() {
           {clubs.map(club => (
             <div key={club.id} className="card flex-col justify-between hover:shadow-md transition-shadow" style={{ minHeight: '160px' }}>
               <div>
-                <h3 className="text-xl font-bold mb-2" style={{ color: '#111827' }}>{club.name}</h3>
-                <p className="text-gray-600 mb-4 text-sm" style={{ minHeight: '40px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{club.description || 'No description provided.'}</p>
+                <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-dark)' }}>{club.name}</h3>
+                <p style={{ color: 'var(--text-light)', marginBottom: '1rem', fontSize: '0.875rem', minHeight: '40px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{club.description || 'No description provided.'}</p>
               </div>
-              <div className="flex justify-between items-center pt-4" style={{ borderTop: '1px solid #e5e7eb' }}>
-                <span className="badge" style={{ backgroundColor: '#e0e7ff', color: '#4f46e5', padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase' }}>
+              <div className="flex justify-between items-center pt-4" style={{ borderTop: '1px solid var(--border-color)' }}>
+                <span style={{ 
+                  fontSize: '0.8rem', 
+                  fontWeight: 600, 
+                  color: club.club_members[0]?.role === 'admin' ? 'var(--orange-accent)' : 'var(--accent-color)',
+                  textTransform: 'uppercase',
+                  textShadow: `0 0 5px ${club.club_members[0]?.role === 'admin' ? 'rgba(255, 159, 28, 0.4)' : 'rgba(0, 242, 255, 0.4)'}`
+                }}>
                   {club.club_members[0]?.role}
                 </span>
                 <Link to={`/clubs/${club.id}`} className="btn btn-outline btn-sm" style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem', textDecoration: 'none' }}>View Club</Link>

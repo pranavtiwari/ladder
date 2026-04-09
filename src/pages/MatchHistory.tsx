@@ -6,6 +6,7 @@ import { Trophy, CheckCircle, XCircle, X } from 'lucide-react';
 export default function MatchHistory() {
   const { user } = useAuth();
   const [matches, setMatches] = useState<any[]>([]);
+  const [myTeamIds, setMyTeamIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Score recording modal state
@@ -26,9 +27,10 @@ export default function MatchHistory() {
         .from('teams')
         .select('id')
         .or(`player1_id.eq.${user?.id},player2_id.eq.${user?.id}`);
-      const myTeamIds = myTeams?.map((t: any) => t.id) || [];
-      const teamFilter = myTeamIds.length > 0
-        ? `,challenger_team_id.in.(${myTeamIds.join(',')}),defender_team_id.in.(${myTeamIds.join(',')})`
+      const teamIds = myTeams?.map((t: any) => t.id) || [];
+      setMyTeamIds(teamIds);
+      const teamFilter = teamIds.length > 0
+        ? `,challenger_team_id.in.(${teamIds.join(',')}),defender_team_id.in.(${teamIds.join(',')})`
         : '';
 
       const { data, error } = await supabase
@@ -141,7 +143,7 @@ export default function MatchHistory() {
       {loading ? (
         <p style={{ color: '#9ca3af' }}>Loading…</p>
       ) : matches.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: '#6b7280' }}>
+        <div className="card" style={{ textAlign: 'center', padding: '2.5rem', color: 'var(--text-light)' }}>
           No matches recorded yet.
         </div>
       ) : (
@@ -154,49 +156,43 @@ export default function MatchHistory() {
             const canRecordScore = match.status === 'accepted';
             const canConfirm = match.status === 'score_submitted' && match.score_submitted_by !== user?.id;
 
-            let result: string = 'In Progress';
-            let resultColor = '#6b7280';
-            let resultBg = '#f3f4f6';
+            let result = '';
+            let resultClass = 'badge-gray';
 
             if (match.status === 'completed') {
-              const won = match.winner_id === user?.id;
-              result = won ? 'Win' : 'Loss';
-              resultColor = won ? '#059669' : '#dc2626';
-              resultBg = won ? '#d1fae5' : '#fee2e2';
+              const won = isSingles 
+                ? match.winner_id === user?.id
+                : match.winner_team_id && myTeamIds.includes(match.winner_team_id);
+              result = won ? 'WIN' : 'LOSS';
+              resultClass = won ? 'badge-neon-green' : 'badge-neon-orange';
             } else if (match.status === 'score_submitted') {
-              result = 'Pending Confirmation';
-              resultColor = '#0284c7';
-              resultBg = '#e0f2fe';
+              result = 'PENDING CONFIRMATION';
+              resultClass = 'badge-neon-cyan';
             } else if (match.status === 'accepted') {
-              result = 'In Progress';
-              resultColor = '#d97706';
-              resultBg = '#fef3c7';
+              result = 'IN PROGRESS';
+              resultClass = 'badge-neon-green';
             } else if (match.status === 'pending') {
-              result = 'Pending';
-              resultColor = '#6b7280';
-              resultBg = '#f3f4f6';
+              result = 'PENDING ACCEPTANCE';
+              resultClass = 'badge-neon-cyan';
             } else if (match.status === 'disputed') {
-              result = 'Disputed';
-              resultColor = '#dc2626';
-              resultBg = '#fee2e2';
+              result = 'DISPUTED';
+              resultClass = 'badge-neon-orange';
             } else if (match.status === 'abandoned') {
-              result = 'Abandoned';
-              resultColor = '#6b7280';
-              resultBg = '#f3f4f6';
+              result = 'ABANDONED';
+              resultClass = 'badge-gray';
             } else if (match.status === 'declined') {
-              result = 'Declined';
-              resultColor = '#6b7280';
-              resultBg = '#f3f4f6';
+              result = 'DECLINED';
+              resultClass = 'badge-gray';
             }
 
             return (
               <div key={match.id} className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                   {opponent?.avatar_url
-                    ? <img src={opponent.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%' }} />
-                    : <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
+                    ? <img src={opponent.avatar_url} alt="" style={{ width: 36, height: 36, borderRadius: '50%', border: '1px solid var(--border-color)' }} />
+                    : <div style={{ width: 36, height: 36, borderRadius: '50%', backgroundColor: 'var(--secondary-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-light)', border: '1px solid var(--border-color)' }}>{displayName(opponent).charAt(0)}</div>}
                   <div>
-                    <div style={{ fontWeight: 600, color: '#111827' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-dark)' }}>
                       {isSingles
                         ? <>{displayName(me)} <span style={{ color: '#9ca3af', fontWeight: 400 }}>vs</span> {displayName(opponent)}</>
                         : <>{match.challenger_team?.name || 'Team'} <span style={{ color: '#9ca3af', fontWeight: 400 }}>vs</span> {match.defender_team?.name || 'Team'}</>
@@ -210,9 +206,9 @@ export default function MatchHistory() {
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                   {match.score_text && (
-                    <span style={{ fontWeight: 600, color: '#374151', fontSize: '0.9rem' }}>{match.score_text}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-dark)', fontSize: '0.9rem' }}>{match.score_text}</span>
                   )}
-                  <span style={{ padding: '3px 10px', borderRadius: '999px', fontSize: '0.78rem', fontWeight: 700, backgroundColor: resultBg, color: resultColor }}>
+                  <span className={resultClass}>
                     {result}
                   </span>
                   {canRecordScore && (
@@ -253,14 +249,14 @@ export default function MatchHistory() {
       {recordingMatch && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div className="card" style={{ width: '100%', maxWidth: '420px', position: 'relative' }}>
-            <button onClick={() => setRecordingMatch(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button onClick={() => setRecordingMatch(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
               <X size={20} />
             </button>
             <h2 style={{ fontWeight: 700, fontSize: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trophy size={20} color="#f59e0b" /> Record Result
             </h2>
             <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>Who won?</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>Who won?</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                   <input
@@ -283,7 +279,7 @@ export default function MatchHistory() {
               </div>
             </div>
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>Final Score</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>Final Score</label>
               <input
                 type="text" value={scoreText}
                 onChange={e => setScoreText(e.target.value)}

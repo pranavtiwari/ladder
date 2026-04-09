@@ -1,18 +1,73 @@
 :root {
-  --primary-color: #1a2b3d;
-  --secondary-color: #f1f5f9;
-  --accent-color: #22c55e;
-  --text-dark: #0f172a;
-  --text-light: #64748b;
-  --bg-color: #f8fafc;
-  --surface-color: #ffffff;
-  --border-color: #e2e8f0;
-  --danger-color: #ef4444;
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --danger-color: #ff4d4d;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.7);
   --radius-md: 0.5rem;
   --radius-lg: 1rem;
 }
+
+body.theme-neon-court {
+  --primary-color: #22c55e;       /* Neon Green */
+  --secondary-color: #1e293b;     /* Slate */
+  --accent-color: #00f2ff;        /* Atomic Cyan */
+  --orange-accent: #ff9f1c;       /* Sunset Orange */
+  --text-dark: #ffffff;           /* Pure white */
+  --text-light: #cbd5e1;          /* Lighter muted gray */
+  --bg-color: #080c14;            /* Jet Black */
+  --surface-color: #161b22;       /* GitHub dark style surface */
+  --border-color: rgba(255, 255, 255, 0.1);
+  --overlay-bg: rgba(15, 23, 42, 0.78);
+  --card-blur: blur(12px);
+  --bg-image: url('/badminton_bg.png');
+}
+
+body.theme-glassmorphism {
+  --primary-color: #4ade80;       /* Lighter green */
+  --secondary-color: rgba(30, 41, 59, 0.5); 
+  --accent-color: #38bdf8;        /* Sky blue */
+  --orange-accent: #fb923c;       /* Brighter orange */
+  --text-dark: #ffffff;
+  --text-light: #e2e8f0;          /* Muted light gray */
+  --bg-color: #0f172a;            /* Slate background */
+  --surface-color: rgba(255, 255, 255, 0.05); /* Pro translucent */
+  --border-color: rgba(255, 255, 255, 0.2);
+  --overlay-bg: rgba(15, 23, 42, 0.35); /* Much lighter overlay */
+  --card-blur: blur(20px);
+  --bg-image: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #312e81 100%), url('/badminton_bg.png');
+}
+
+body.theme-midnight-navy {
+  --primary-color: #fbbf24;       /* Gold accent */
+  --secondary-color: #0f172a;     /* Deep Navy UI */
+  --accent-color: #2dd4bf;        /* Teal accent */
+  --orange-accent: #fb7185;       /* Rose/Pink accent */
+  --text-dark: #ffffff;
+  --text-light: #94a3b8;
+  --bg-color: #1e293b;            /* Navy Background */
+  --surface-color: #0f172a;       /* Dark Navy Surface */
+  --border-color: rgba(255, 255, 255, 0.1);
+  --overlay-bg: rgba(15, 23, 42, 0.6);
+  --card-blur: blur(8px);
+  --bg-image: linear-gradient(180deg, #1e293b 0%, #0f172a 100%);
+}
+
+body.theme-clay-court {
+  --primary-color: #ea580c;       /* Clay Orange */
+  --secondary-color: #1e1b4b;     /* Indigo Hardcourt */
+  --accent-color: #fbbf24;        /* Tennis Ball Yellow/Gold */
+  --orange-accent: #9a3412;       /* Deeper Clay */
+  --text-dark: #f8fafc;           /* Off-white */
+  --text-light: #cbd5e1;
+  --bg-color: #431407;            /* Deep Burnt Orange */
+  --surface-color: #1e1b4b;       /* Indigo Surface */
+  --border-color: rgba(234, 88, 12, 0.2);
+  --overlay-bg: rgba(15, 23, 42, 0.4);
+  --card-blur: blur(4px);
+  --bg-image: linear-gradient(135deg, #431407 0%, #1e1b4b 100%), url('/badminton_bg.png');
+}
+
+
+
 
 * {
   box-sizing: border-box;
@@ -35,6 +90,22 @@ a {
 
 ul {
   list-style: none;
+}
+
+select {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--text-dark);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem center;
+  background-size: 1rem;
+}
+
+option {
+  background-color: #161b22; /* Must match surface color hex */
+  color: white;
 }
 
 .app-container {
@@ -64,7 +135,7 @@ ul {
   color: white;
 }
 .btn-primary:hover {
-  background-color: #111d2b;
+  background-color: #16a34a;
   transform: translateY(-1px);
 }
 
@@ -73,7 +144,7 @@ ul {
   color: white;
 }
 .btn-accent:hover {
-  background-color: #16a34a;
+  background-color: #0284c7;
   transform: translateY(-1px);
 }
 
@@ -93,18 +164,25 @@ ul {
 
 /* Premium Card Profiles */
 .card {
-  background-color: rgba(255, 255, 255, 0.88);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background-color: rgba(30, 41, 59, 0.88); /* dark surface */
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  box-shadow: 0 2px 12px 0 rgb(0 0 0 / 0.08);
-  border: 1px solid rgba(226, 232, 240, 0.7);
   padding: 1.5rem;
-  transition: box-shadow 0.2s ease, background-color 0.2s ease;
-}
-.card:hover {
-  background-color: rgba(255, 255, 255, 0.96);
   box-shadow: var(--shadow-md);
+  backdrop-filter: var(--card-blur);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
 }
 
 /* Typography & Display Utilities */
@@ -116,9 +194,14 @@ ul {
 }
 
 .section-title {
-  font-size: 1.125rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-dark);
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  letter-spacing: -0.01em;
 }
 
 /* Layout utilities */
@@ -148,11 +231,12 @@ ul {
   flex-direction: column;
   overflow-y: auto;
   padding: 2rem;
-  background-color: transparent;
-  background-image: url('/badminton_bg.png');
+  background-color: var(--bg-color);
+  background-image: var(--bg-image);
   background-size: cover;
   background-position: center top;
   background-attachment: fixed;
+  background-blend-mode: overlay;
   position: relative;
 }
 
@@ -161,7 +245,7 @@ ul {
   content: '';
   position: fixed;
   inset: 0;
-  background: rgba(248, 250, 252, 0.82);
+  background: var(--overlay-bg);
   pointer-events: none;
   z-index: 0;
 }
@@ -175,10 +259,10 @@ ul {
 /* Sidebar Navigation */
 .sidebar {
   width: 250px;
-  background-color: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-right: 1px solid rgba(226, 232, 240, 0.8);
+  background-color: var(--secondary-color);
+  backdrop-filter: var(--card-blur);
+  -webkit-backdrop-filter: var(--card-blur);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   padding: 1.5rem 0;
@@ -230,10 +314,32 @@ ul {
   font-size: 0.75rem;
   font-weight: 600;
 }
-.badge-green { background-color: #dcfce7; color: #166534; }
-.badge-red { background-color: #fee2e2; color: #991b1b; }
-.badge-blue { background-color: #dbeafe; color: #1e40af; }
-.badge-gray { background-color: #f1f5f9; color: #475569; }
+
+.badge-neon-cyan {
+  background: rgba(0, 242, 255, 0.1);
+  color: var(--accent-color);
+  border: 1px solid rgba(0, 242, 255, 0.3);
+  text-shadow: 0 0 8px rgba(0, 242, 255, 0.4);
+}
+
+.badge-neon-orange {
+  background: rgba(255, 159, 28, 0.1);
+  color: var(--orange-accent);
+  border: 1px solid rgba(255, 159, 28, 0.3);
+  text-shadow: 0 0 8px rgba(255, 159, 28, 0.4);
+}
+
+.badge-neon-green {
+  background: rgba(34, 197, 94, 0.1);
+  color: var(--primary-color);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  text-shadow: 0 0 8px rgba(34, 197, 94, 0.4);
+}
+
+.badge-green { background-color: rgba(34, 197, 94, 0.1); color: var(--primary-color); }
+.badge-red { background-color: rgba(239, 68, 68, 0.1); color: var(--danger-color); }
+.badge-blue { background-color: rgba(0, 242, 255, 0.1); color: var(--accent-color); }
+.badge-gray { background-color: rgba(148, 163, 184, 0.1); color: var(--text-light); }
 
 /* Mobile responsiveness */
 .mobile-header { display: none; }
@@ -254,9 +360,9 @@ ul {
     align-items: center;
     justify-content: space-between;
     padding: 0.75rem 1rem;
-    background-color: rgba(255, 255, 255, 0.97);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background-color: var(--secondary-color);
+    backdrop-filter: var(--card-blur);
+    -webkit-backdrop-filter: var(--card-blur);
     border-bottom: 1px solid var(--border-color);
     position: sticky;
     top: 0;
@@ -273,12 +379,12 @@ ul {
 
   .mobile-menu {
     display: flex;
-    flex-direction: column;
+    direction: column;
     gap: 0.25rem;
     padding: 0.75rem 1rem;
-    background-color: rgba(255, 255, 255, 0.97);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background-color: var(--secondary-color);
+    backdrop-filter: var(--card-blur);
+    -webkit-backdrop-filter: var(--card-blur);
     border-bottom: 1px solid var(--border-color);
     position: fixed;
     top: 0;

@@ -204,12 +204,12 @@ export default function ClubView() {
     }
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: '#6b7280' }}>Loading club...</div>;
+  if (loading) return <div style={{ padding: '2rem', color: 'var(--text-light)' }}>Loading club...</div>;
   if (!club) return <div style={{ padding: '2rem', color: '#ef4444' }}>Club not found.</div>;
 
   return (
     <div style={{ maxWidth: '52rem', margin: '0 auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <Link to="/clubs" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#6b7280', textDecoration: 'none', fontSize: '0.9rem' }}>
+      <Link to="/clubs" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-light)', textDecoration: 'none', fontSize: '0.9rem' }}>
         <ArrowLeft size={16} /> Back to My Clubs
       </Link>
 
@@ -229,7 +229,7 @@ export default function ClubView() {
               <button onClick={saveClubName} disabled={savingClubName} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#059669' }}>
                 <Save size={18} />
               </button>
-              <button onClick={() => setEditingClubName(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+              <button onClick={() => setEditingClubName(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
                 <X size={18} />
               </button>
             </div>
@@ -247,7 +247,7 @@ export default function ClubView() {
               )}
             </div>
           )}
-          <p style={{ color: '#6b7280' }}>{club.description || 'No description provided.'}</p>
+          <p style={{ color: 'var(--text-light)' }}>{club.description || 'No description provided.'}</p>
         </div>
         {isAdmin && (
           <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -278,7 +278,7 @@ export default function ClubView() {
                       ? <img src={p.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
                       : <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#d1d5db' }} />
                     }
-                    <span style={{ fontWeight: 600, color: '#374151' }}>{name}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{name}</span>
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
@@ -315,8 +315,8 @@ export default function ClubView() {
               <div key={sport} style={{
                 display: 'flex', alignItems: 'center', gap: '0.4rem',
                 padding: '0.5rem 1rem', borderRadius: '9999px',
-                backgroundColor: enabled ? '#e0e7ff' : '#f3f4f6',
-                color: enabled ? '#4f46e5' : '#9ca3af',
+                backgroundColor: enabled ? 'rgba(0, 242, 255, 0.1)' : 'var(--secondary-color)',
+                color: enabled ? 'var(--accent-color)' : 'var(--text-light)',
                 fontWeight: enabled ? 600 : 400,
                 fontSize: '0.875rem', opacity: enabled ? 1 : 0.6,
               }}>
@@ -338,18 +338,20 @@ export default function ClubView() {
             const isSelf = m.player_id === user?.id;
             const isTargetAdmin = m.role === 'admin';
             return (
-            <div key={m.player_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #f3f4f6' }}>
+            <div key={m.player_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {p?.avatar_url
                   ? <img src={p.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
                   : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
-                <span style={{ color: '#374151' }}>{displayName}{isSelf ? ' (you)' : ''}</span>
+                <span style={{ color: 'var(--text-dark)' }}>{displayName}{isSelf ? ' (you)' : ''}</span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{
-                  padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
-                  backgroundColor: isTargetAdmin ? '#e0e7ff' : '#f3f4f6',
-                  color: isTargetAdmin ? '#4f46e5' : '#6b7280',
+                <span style={{ 
+                  fontSize: '0.8rem', 
+                  fontWeight: 600, 
+                  color: isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)',
+                  textTransform: 'uppercase',
+                  textShadow: `0 0 5px ${isTargetAdmin ? 'rgba(255, 159, 28, 0.4)' : 'rgba(0, 242, 255, 0.4)'}`
                 }}>
                   {m.role}
                 </span>
@@ -412,14 +414,14 @@ export default function ClubView() {
         </div>
 
         {showCreateLadder && (
-          <form onSubmit={handleCreateLadder} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem', padding: '1rem', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+          <form onSubmit={handleCreateLadder} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', marginBottom: '1.25rem', padding: '1rem', backgroundColor: 'var(--surface-color)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.3rem' }}>Ladder Name*</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Ladder Name*</label>
                 <input type="text" required value={newLadderName} onChange={e => setNewLadderName(e.target.value)} placeholder="e.g. Men's Singles Open" style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.3rem' }}>Sport*</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Sport*</label>
                 <select required value={newLadderSport} onChange={e => setNewLadderSport(e.target.value)} style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}>
                   <option value="">Select sport…</option>
                   {(club.sports || ALL_SPORTS).map((s: string) => <option key={s} value={s}>{SPORT_ICONS[s]} {s}</option>)}
@@ -428,22 +430,22 @@ export default function ClubView() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.3rem' }}>Type</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Type</label>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   {(['singles', 'doubles'] as const).map(t => (
-                    <button key={t} type="button" onClick={() => setNewLadderType(t)} style={{ flex: 1, padding: '0.45rem', borderRadius: '6px', border: `2px solid ${newLadderType === t ? '#4f46e5' : '#d1d5db'}`, backgroundColor: newLadderType === t ? '#e0e7ff' : '#f9fafb', color: newLadderType === t ? '#4f46e5' : '#6b7280', fontWeight: newLadderType === t ? 600 : 400, cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <button key={t} type="button" onClick={() => setNewLadderType(t)} style={{ flex: 1, padding: '0.45rem', borderRadius: '6px', border: `2px solid ${newLadderType === t ? '#4f46e5' : '#d1d5db'}`, backgroundColor: newLadderType === t ? '#e0e7ff' : '#f9fafb', color: newLadderType === t ? '#4f46e5' : 'var(--text-light)', fontWeight: newLadderType === t ? 600 : 400, cursor: 'pointer', fontSize: '0.85rem' }}>
                       {t === 'singles' ? '👤 Singles' : '👥 Doubles'}
                     </button>
                   ))}
                 </div>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.3rem' }}>Rules / Notes</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Rules / Notes</label>
                 <input type="text" value={newLadderRules} onChange={e => setNewLadderRules(e.target.value)} placeholder="Optional rules" style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }} />
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button type="button" style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: '1px solid #d1d5db', background: 'none', cursor: 'pointer', color: '#6b7280', fontSize: '0.875rem' }} onClick={() => setShowCreateLadder(false)}>Cancel</button>
+              <button type="button" style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', border: '1px solid #d1d5db', background: 'none', cursor: 'pointer', color: 'var(--text-light)', fontSize: '0.875rem' }} onClick={() => setShowCreateLadder(false)}>Cancel</button>
               <button type="submit" disabled={creatingLadder} style={{ padding: '0.4rem 0.9rem', borderRadius: '6px', backgroundColor: 'var(--primary-color)', color: 'white', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.875rem' }}>
                 {creatingLadder ? 'Creating…' : 'Create Ladder'}
               </button>
@@ -459,8 +461,8 @@ export default function ClubView() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
             {ladders.map((l: any) => (
               <div key={l.id} style={{
-                padding: '1rem', borderRadius: '8px', border: '1px solid #e5e7eb',
-                backgroundColor: '#fafafa', transition: 'box-shadow 0.15s',
+                padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)',
+                backgroundColor: 'rgba(255, 255, 255, 0.02)', transition: 'box-shadow 0.15s',
                 display: 'flex', flexDirection: 'column', gap: '0.4rem',
               }}
                 onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)')}
@@ -483,7 +485,7 @@ export default function ClubView() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                     <Link
                       to={`/clubs/${id}/ladders/${l.id}`}
-                      style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', textDecoration: 'none', flex: 1 }}
+                      style={{ fontWeight: 700, color: 'var(--text-dark)', fontSize: '0.95rem', textDecoration: 'none', flex: 1 }}
                     >
                       {l.name}
                     </Link>
@@ -498,9 +500,15 @@ export default function ClubView() {
                     )}
                   </div>
                 )}
-                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: '0.75rem', padding: '1px 7px', borderRadius: '999px', backgroundColor: '#e0e7ff', color: '#4f46e5' }}>{SPORT_ICONS[l.sport]} {l.sport}</span>
-                  <span style={{ fontSize: '0.75rem', padding: '1px 7px', borderRadius: '999px', backgroundColor: l.type === 'singles' ? '#dbeafe' : '#fce7f3', color: l.type === 'singles' ? '#1d4ed8' : '#be185d' }}>
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
+                  <span className="badge-neon-green">{SPORT_ICONS[l.sport]} {l.sport}</span>
+                  <span style={{ 
+                    fontSize: '0.78rem', 
+                    fontWeight: 600, 
+                    color: 'var(--text-light)',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.02em'
+                  }}>
                     {l.type === 'singles' ? '👤 Singles' : '👥 Doubles'}
                   </span>
                 </div>
@@ -515,21 +523,21 @@ export default function ClubView() {
       {showEditModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div className="card" style={{ width: '100%', maxWidth: '520px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
-            <button onClick={() => setShowEditModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button onClick={() => setShowEditModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
               <X size={22} />
             </button>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem', color: '#111827' }}>Edit Club</h2>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--text-dark)' }}>Edit Club</h2>
             <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.4rem' }}>Club Name</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.4rem' }}>Club Name</label>
                 <input type="text" required value={editingName} onChange={e => setEditingName(e.target.value)} style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.4rem' }}>Description</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.4rem' }}>Description</label>
                 <textarea value={editingDesc} onChange={e => setEditingDesc(e.target.value)} style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px', minHeight: '80px', fontFamily: 'inherit' }} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.75rem' }}>Facilities Available</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.75rem' }}>Facilities Available</label>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.6rem' }}>
                   {ALL_SPORTS.map(sport => {
                     const checked = editingSports.includes(sport);
@@ -539,7 +547,7 @@ export default function ClubView() {
                         padding: '0.45rem 0.9rem', borderRadius: '9999px',
                         border: `2px solid ${checked ? '#4f46e5' : '#d1d5db'}`,
                         backgroundColor: checked ? '#e0e7ff' : '#f9fafb',
-                        color: checked ? '#4f46e5' : '#6b7280',
+                        color: checked ? '#4f46e5' : 'var(--text-light)',
                         fontWeight: checked ? 600 : 400, cursor: 'pointer', fontSize: '0.875rem', transition: 'all 0.15s',
                       }}>
                         {SPORT_ICONS[sport]} {sport}

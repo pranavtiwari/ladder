@@ -130,7 +130,7 @@ export default function Profile() {
   if (loading) {
     return (
       <div className="flex justify-center items-center h-full" style={{ padding: '2rem' }}>
-        <p style={{ color: '#6b7280' }}>Loading profile...</p>
+        <p style={{ color: 'var(--text-light)' }}>Loading profile...</p>
       </div>
     );
   }
@@ -151,18 +151,18 @@ export default function Profile() {
                  <img 
                    src={profile.avatar_url} 
                    alt="Avatar" 
-                   style={{ height: '6rem', width: '6rem', objectFit: 'cover', borderRadius: '9999px', border: '4px solid #f3f4f6', opacity: uploadingAvatar ? 0.5 : 1 }} 
+                   style={{ height: '6rem', width: '6rem', objectFit: 'cover', borderRadius: '9999px', border: '4px solid var(--border-color)', opacity: uploadingAvatar ? 0.5 : 1 }} 
                  />
               ) : (
-                 <UserCircle size={96} color="#d1d5db" style={{ opacity: uploadingAvatar ? 0.5 : 1 }} />
+                 <UserCircle size={96} color="var(--text-light)" style={{ opacity: uploadingAvatar ? 0.5 : 1 }} />
               )}
               {uploadingAvatar && (
-                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: '0.8rem', fontWeight: 600 }}>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-light)', fontSize: '0.8rem', fontWeight: 600 }}>
                   ...
                 </div>
               )}
-              <div style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: 'white', borderRadius: '50%', padding: '0.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <div style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: 'var(--surface-color)', borderRadius: '50%', padding: '0.25rem', border: '1px solid var(--border-color)', boxShadow: 'var(--shadow-md)' }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-dark)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
                   <circle cx="12" cy="13" r="4"></circle>
                 </svg>
@@ -178,18 +178,18 @@ export default function Profile() {
             />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-gray-900" style={{ fontSize: '1.25rem', fontWeight: 600, color: '#111827' }}>
+            <h2 className="text-xl font-semibold text-gray-900" style={{ fontSize: '1.25rem', fontWeight: 600, color: 'var(--text-dark)' }}>
               {profile.first_name} {profile.last_name}
             </h2>
             {profile.nickname && (
               <p style={{ color: 'var(--primary-color)', fontWeight: 600, fontSize: '0.9rem' }}>@{profile.nickname}</p>
             )}
-            <p style={{ color: '#6b7280' }}>{user?.email}</p>
+            <p style={{ color: 'var(--text-light)' }}>{user?.email}</p>
           </div>
         </div>
 
         {message.text && (
-          <div style={{ padding: '1rem', marginBottom: '1.5rem', borderRadius: '0.375rem', backgroundColor: message.type === 'success' ? '#ecfdf5' : '#fef2f2', color: message.type === 'success' ? '#065f46' : '#991b1b' }}>
+          <div className={message.type === 'success' ? 'badge-neon-green' : 'badge-neon-orange'} style={{ padding: '0.75rem 1rem', marginBottom: '1.5rem', borderRadius: '0.5rem', width: '100%', justifyContent: 'center' }}>
             {message.text}
           </div>
         )}
@@ -197,7 +197,7 @@ export default function Profile() {
         <form onSubmit={updateProfile} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem' }}>
             <div>
-              <label htmlFor="first_name" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>
+              <label htmlFor="first_name" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
                 First Name
               </label>
               <input
@@ -205,13 +205,13 @@ export default function Profile() {
                 id="first_name"
                 value={profile.first_name}
                 onChange={(e) => setProfile({ ...profile, first_name: e.target.value })}
-                className="input border-gray-300"
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                className="input"
+                style={{ width: '100%', padding: '0.6rem', border: '1px solid var(--border-color)', borderRadius: '0.5rem', backgroundColor: 'var(--surface-color)', color: 'var(--text-dark)' }}
               />
             </div>
 
             <div>
-              <label htmlFor="last_name" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>
+              <label htmlFor="last_name" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
                 Last Name
               </label>
               <input
@@ -219,14 +219,14 @@ export default function Profile() {
                 id="last_name"
                 value={profile.last_name}
                 onChange={(e) => setProfile({ ...profile, last_name: e.target.value })}
-                className="input border-gray-300"
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+                className="input"
+                style={{ width: '100%', padding: '0.6rem', border: '1px solid var(--border-color)', borderRadius: '0.5rem', backgroundColor: 'var(--surface-color)', color: 'var(--text-dark)' }}
               />
             </div>
           </div>
 
           <div>
-            <label htmlFor="nickname" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>
+            <label htmlFor="nickname" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
               Nickname <span style={{ color: '#9ca3af', fontWeight: 400 }}>(public display name)</span>
             </label>
             <input
@@ -234,15 +234,15 @@ export default function Profile() {
               id="nickname"
               value={profile.nickname}
               onChange={(e) => setProfile({ ...profile, nickname: e.target.value })}
-              className="input border-gray-300"
+              className="input"
               placeholder="e.g. Ace, Smash King…"
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              style={{ width: '100%', padding: '0.6rem', border: '1px solid var(--border-color)', borderRadius: '0.5rem', backgroundColor: 'var(--surface-color)', color: 'var(--text-dark)' }}
             />
-            <p style={{ marginTop: '0.35rem', fontSize: '0.78rem', color: '#9ca3af' }}>This is how other players will see you in ladders, matches, and clubs.</p>
+            <p style={{ marginTop: '0.4rem', fontSize: '0.78rem', color: 'var(--text-light)' }}>This is how other players will see you in ladders, matches, and clubs.</p>
           </div>
 
           <div>
-            <label htmlFor="avatar_url" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>
+            <label htmlFor="avatar_url" style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>
               Avatar URL
             </label>
             <input
@@ -250,8 +250,8 @@ export default function Profile() {
               id="avatar_url"
               value={profile.avatar_url}
               onChange={(e) => setProfile({ ...profile, avatar_url: e.target.value })}
-              className="input border-gray-300"
-              style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '0.375rem' }}
+              className="input"
+              style={{ width: '100%', padding: '0.6rem', border: '1px solid var(--border-color)', borderRadius: '0.5rem', backgroundColor: 'var(--surface-color)', color: 'var(--text-dark)' }}
             />
           </div>
 

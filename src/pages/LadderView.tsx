@@ -254,7 +254,7 @@ export default function LadderView() {
     }
   }
 
-  if (loading) return <div style={{ padding: '2rem', color: '#6b7280' }}>Loading ladder…</div>;
+  if (loading) return <div style={{ padding: '2rem', color: 'var(--text-light)' }}>Loading ladder…</div>;
   if (!ladder) return <div style={{ padding: '2rem', color: '#ef4444' }}>Ladder not found.</div>;
 
   const isSingles = ladder.type === 'singles';
@@ -279,7 +279,7 @@ export default function LadderView() {
 
   return (
     <div style={{ maxWidth: '52rem', margin: '0 auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      <Link to={`/clubs/${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#6b7280', textDecoration: 'none', fontSize: '0.9rem' }}>
+      <Link to={`/clubs/${id}`} style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: 'var(--text-light)', textDecoration: 'none', fontSize: '0.9rem' }}>
         <ArrowLeft size={16} /> Back to Club
       </Link>
 
@@ -287,20 +287,34 @@ export default function LadderView() {
       <div>
         <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: '0.2rem' }}>{ladder.name}</h1>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>{SPORT_ICONS[ladder.sport]} {ladder.sport}</span>
-          <span style={{ padding: '2px 10px', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 600, backgroundColor: isSingles ? '#dbeafe' : '#fce7f3', color: isSingles ? '#1d4ed8' : '#be185d' }}>
+          <span style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>{SPORT_ICONS[ladder.sport]} {ladder.sport}</span>
+          <span style={{ 
+            fontSize: '0.82rem', 
+            fontWeight: 600, 
+            color: 'var(--text-light)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.02em'
+          }}>
             {isSingles ? '👤 Singles' : '👥 Doubles'}
           </span>
         </div>
-        {ladder.rules && <p style={{ color: '#6b7280', marginTop: '0.5rem', fontSize: '0.875rem' }}>{ladder.rules}</p>}
+        {ladder.rules && <p style={{ color: 'var(--text-light)', marginTop: '0.5rem', fontSize: '0.875rem' }}>{ladder.rules}</p>}
       </div>
 
       {/* ── Status bar: rank + team selector (mobile-first top row) ── */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', padding: '1rem 1.25rem' }}>
         {isSingles ? (
           alreadyJoined ? (
-            <span style={{ padding: '0.4rem 0.9rem', borderRadius: '999px', backgroundColor: '#d1fae5', color: '#065f46', fontWeight: 700, fontSize: '1rem' }}>
-              ✅ Rank #{myRank}
+            <span style={{ 
+              padding: '0.4rem 1rem', borderRadius: '8px', 
+              backgroundColor: 'rgba(34, 197, 94, 0.15)', 
+              color: 'var(--primary-color)', 
+              fontWeight: 800, fontSize: '1rem',
+              textShadow: '0 0 10px rgba(34, 197, 94, 0.5)',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              letterSpacing: '0.02em'
+            }}>
+              ✅ RANK #{myRank}
             </span>
           ) : (
             <button
@@ -316,14 +330,22 @@ export default function LadderView() {
           <>
             {alreadyJoined && (
               <>
-                <span style={{ padding: '0.4rem 0.9rem', borderRadius: '999px', backgroundColor: '#d1fae5', color: '#065f46', fontWeight: 700, fontSize: '1rem' }}>
-                  ✅ Rank #{myActiveRank}
+                <span style={{ 
+                  padding: '0.4rem 1rem', borderRadius: '8px', 
+                  backgroundColor: 'rgba(34, 197, 94, 0.15)', 
+                  color: 'var(--primary-color)', 
+                  fontWeight: 800, fontSize: '1rem',
+                  textShadow: '0 0 10px rgba(34, 197, 94, 0.5)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                  letterSpacing: '0.02em'
+                }}>
+                  ✅ RANK #{myActiveRank}
                 </span>
                 {myTeamsInLadder.length > 1 && (
                   <select
                     value={activeTeamId}
                     onChange={e => setActiveTeamId(e.target.value)}
-                    style={{ padding: '0.35rem 0.6rem', border: '1px solid #d1fae5', backgroundColor: '#ecfdf5', color: '#065f46', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }}
+                    style={{ padding: '0.35rem 0.6rem', border: '1px solid rgba(34,197,94,0.3)', backgroundColor: 'rgba(34,197,94,0.15)', color: 'var(--primary-color)', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }}
                   >
                     {myTeamsInLadder.map((mt: any) => (
                       <option key={mt.team_id} value={mt.team_id}>As {mt.teams?.name}</option>
@@ -369,13 +391,13 @@ export default function LadderView() {
 
           {/* Inline team creation form */}
           {showCreateTeam && (
-            <form onSubmit={createTeam} style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: '#fafbfc' }}>
+            <form onSubmit={createTeam} style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: 'transparent' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827' }}>Form a Doubles Team</span>
-                <button type="button" onClick={() => setShowCreateTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}><X size={16} /></button>
+                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-dark)' }}>Form a Doubles Team</span>
+                <button type="button" onClick={() => setShowCreateTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}><X size={16} /></button>
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.25rem' }}>Team Name</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Team Name</label>
                 <input
                   type="text" required value={teamName} onChange={e => setTeamName(e.target.value)}
                   placeholder="e.g. The Giants"
@@ -383,7 +405,7 @@ export default function LadderView() {
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: '#374151', marginBottom: '0.25rem' }}>Partner</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Partner</label>
                 <select
                   required value={partner} onChange={e => setPartner(e.target.value)}
                   style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
@@ -458,23 +480,24 @@ export default function LadderView() {
                   key={entry.id}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.75rem 0.5rem', borderBottom: i < entries.length - 1 ? '1px solid #f3f4f6' : 'none',
-                    backgroundColor: isMe ? '#f0fdf4' : 'transparent',
+                    padding: '0.75rem 0.5rem',
+                    backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent',
+                    borderBottom: i < entries.length - 1 ? '1px solid rgba(51, 65, 85, 0.5)' : 'none',
                     borderRadius: '6px',
                   }}
                 >
-                  <span style={{ minWidth: '2rem', fontWeight: 700, fontSize: '1.1rem', color: '#374151', textAlign: 'center' }}>
+                  <span style={{ minWidth: '2rem', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-dark)', textAlign: 'center' }}>
                     {medal || `#${rank}`}
                   </span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? '#065f46' : '#111827' }}>
+                    <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--primary-color)' : 'var(--text-dark)' }}>
                       {displayName} {isMe ? '(you)' : ''}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{subText}</div>
                   </div>
                   {/* ELO badge for doubles */}
                   {!isSingles && (
-                    <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#7c3aed', backgroundColor: '#ede9fe', padding: '2px 8px', borderRadius: '999px', whiteSpace: 'nowrap' }}>
+                    <span className="badge-neon-orange" style={{ whiteSpace: 'nowrap' }}>
                       Team ELO: {entry.elo_rating ?? 800}
                     </span>
                   )}
@@ -493,9 +516,9 @@ export default function LadderView() {
                       style={{
                         display: 'flex', alignItems: 'center', gap: '0.3rem',
                         padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.8rem',
-                        backgroundColor: hasActiveMatch ? '#f3f4f6' : '#fff7ed',
-                        color: hasActiveMatch ? '#9ca3af' : '#c2410c',
-                        border: '1px solid ' + (hasActiveMatch ? '#e5e7eb' : '#fdba74'),
+                        backgroundColor: hasActiveMatch ? 'rgba(51, 65, 85, 0.5)' : 'rgba(249, 115, 22, 0.1)',
+                        color: hasActiveMatch ? '#9ca3af' : '#fb923c',
+                        border: '1px solid ' + (hasActiveMatch ? 'rgba(51, 65, 85, 0.8)' : '#fb923c'),
                         cursor: hasActiveMatch ? 'default' : 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
                       }}
                     >
@@ -513,16 +536,16 @@ export default function LadderView() {
       {challengeTarget && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' }}>
           <div className="card" style={{ width: '100%', maxWidth: '420px', position: 'relative' }}>
-            <button onClick={() => setChallengeTarget(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button onClick={() => setChallengeTarget(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
               <X size={20} />
             </button>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
               <Swords size={22} color="#c2410c" />
-              <h2 style={{ fontWeight: 700, fontSize: '1.15rem', color: '#111827' }}>Send Challenge</h2>
+              <h2 style={{ fontWeight: 700, fontSize: '1.15rem', color: 'var(--text-dark)' }}>Send Challenge</h2>
             </div>
-            <p style={{ color: '#6b7280', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
+            <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
               You are challenging{' '}
-              <strong style={{ color: '#111827' }}>
+              <strong style={{ color: 'var(--text-dark)' }}>
                 {isSingles
                   ? (challengeTarget.profiles?.nickname || challengeTarget.profiles?.first_name)
                   : (challengeTarget.teams?.name || 'this team')}
@@ -531,7 +554,7 @@ export default function LadderView() {
             </p>
             {!isSingles && myTeamsInLadder.length > 1 && (
               <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.35rem' }}>Challenge As Team</label>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.35rem' }}>Challenge As Team</label>
                 <select
                   value={challengeWithTeamId}
                   onChange={e => setChallengeWithTeamId(e.target.value)}
@@ -548,7 +571,7 @@ export default function LadderView() {
               <button className="btn btn-outline" onClick={() => setChallengeTarget(null)}>Cancel</button>
               <button
                 className="btn"
-                style={{ backgroundColor: '#c2410c', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                style={{ backgroundColor: '#ea580c', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
                 disabled={submittingChallenge}
                 onClick={submitChallenge}
               >

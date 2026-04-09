@@ -1,12 +1,14 @@
 
 import { useEffect, useState } from 'react';
 import { Outlet, NavLink, Link } from 'react-router-dom';
-import { Menu, Home, Layers, Users, TrendingUp, User, X, BookOpen } from 'lucide-react';
+import { Menu, Home, Layers, Users, TrendingUp, User, X, BookOpen, Palette } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 export default function Layout() {
   const { user } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [nickname, setNickname] = useState<string>('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -24,7 +26,7 @@ export default function Layout() {
   }, [user]);
 
   return (
-    <div className="app-container">
+    <div className={`app-container theme-${theme}`}>
       {/* Mobile Header */}
       <header className="mobile-header">
         <Link to="/" style={{ textDecoration: 'none' }}>
@@ -127,6 +129,33 @@ export default function Layout() {
             <BookOpen size={20} /> Rules & Info
           </NavLink>
         </nav>
+
+        {/* Theme Selector at Sidebar Bottom */}
+        <div style={{ marginTop: 'auto', padding: '1rem', borderTop: '1px solid var(--border-color)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: 'var(--text-light)', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem' }}>
+            <Palette size={14} /> THEME
+          </div>
+          <select 
+            value={theme} 
+            onChange={(e) => setTheme(e.target.value as any)}
+            className="input"
+            style={{ 
+              width: '100%', 
+              padding: '0.4rem 0.6rem', 
+              fontSize: '0.85rem', 
+              borderRadius: '6px',
+              cursor: 'pointer',
+              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              border: '1px solid var(--border-color)',
+              color: 'var(--text-dark)'
+            }}
+          >
+            <option value="neon-court">Neon Court</option>
+            <option value="glassmorphism">Glassmorphism</option>
+            <option value="midnight-navy">Midnight Navy</option>
+            <option value="clay-court">Clay & Hardcourt</option>
+          </select>
+        </div>
       </aside>
 
       {/* Main Content Area */}

@@ -65,7 +65,7 @@ export default function JoinClub() {
     <div style={{ maxWidth: '52rem', margin: '0 auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div>
         <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: '0.35rem' }}>Find a Club</h1>
-        <p style={{ color: '#6b7280' }}>Search for a club and request to join. Club admins will review your request.</p>
+        <p style={{ color: 'var(--text-light)' }}>Search for a club and request to join. Club admins will review your request.</p>
       </div>
 
       {/* Search Bar */}
@@ -87,7 +87,7 @@ export default function JoinClub() {
       {loading ? (
         <p style={{ color: '#9ca3af' }}>Loading clubs…</p>
       ) : filtered.length === 0 ? (
-        <div className="card" style={{ textAlign: 'center', color: '#6b7280', padding: '2.5rem' }}>
+        <div className="card" style={{ textAlign: 'center', color: 'var(--text-light)', padding: '2.5rem' }}>
           No clubs found{query ? ` matching "${query}"` : ''}.
         </div>
       ) : (
@@ -98,8 +98,8 @@ export default function JoinClub() {
             return (
               <div key={club.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '1rem', color: '#111827', marginBottom: '0.25rem' }}>{club.name}</h3>
-                  <p style={{ color: '#6b7280', fontSize: '0.85rem', marginBottom: '0.5rem' }}>{club.description || 'No description.'}</p>
+                  <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-dark)', marginBottom: '0.25rem' }}>{club.name}</h3>
+                  <p style={{ color: 'var(--text-light)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>{club.description || 'No description.'}</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                     {(club.sports || []).map((s: string) => (
                       <span key={s} style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '999px', backgroundColor: '#e0e7ff', color: '#4f46e5', fontWeight: 500 }}>

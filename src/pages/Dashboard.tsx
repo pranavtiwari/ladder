@@ -323,7 +323,7 @@ export default function Dashboard() {
                       : <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#e5e7eb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Users size={16} color="#9ca3af" /></div>}
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Club Join Request</div>
-                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
                         <strong>{name}</strong> wants to join <Link to={`/clubs/${req.club_id}`} style={{ color: 'var(--primary-color)', textDecoration: 'none', fontWeight: 600 }}>{req.clubs?.name}</Link>
                       </div>
                     </div>
@@ -356,7 +356,7 @@ export default function Dashboard() {
                     <Swords size={20} color="#c2410c" />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Match Challenge</div>
-                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
                         <strong>{challengerName}</strong> challenged {challengeSubject} in <strong>{match.ladders?.name}</strong> ({match.ladders?.clubs?.name})
                       </div>
                     </div>
@@ -387,7 +387,7 @@ export default function Dashboard() {
                     <Trophy size={20} color="#0284c7" />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>In Progress Match</div>
-                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
                         vs <strong>{opponentName}</strong> in <strong>{ladder?.name}</strong>
                       </div>
                     </div>
@@ -409,7 +409,7 @@ export default function Dashboard() {
                     <CheckCircle size={20} color="#059669" />
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Confirm Score</div>
-                      <div style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
                         <strong>{submitterName}</strong> recorded <strong>{match.score_text}</strong>.
                       </div>
                     </div>
@@ -433,14 +433,14 @@ export default function Dashboard() {
       {recordingMatch && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div className="card" style={{ width: '100%', maxWidth: '420px', position: 'relative' }}>
-            <button onClick={() => setRecordingMatch(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+            <button onClick={() => setRecordingMatch(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
               <X size={20} />
             </button>
             <h2 style={{ fontWeight: 700, fontSize: '1.2rem', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Trophy size={20} color="#f59e0b" /> Record Result
             </h2>
             <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>Who won?</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>Who won?</label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
                   <input type="radio" name="winner" value={recordingMatch.ladders?.type === 'singles' ? recordingMatch.challenger_id : recordingMatch.challenger_team_id} checked={winnerId === (recordingMatch.ladders?.type === 'singles' ? recordingMatch.challenger_id : recordingMatch.challenger_team_id)} onChange={e => setWinnerId(e.target.value)} />
@@ -453,11 +453,11 @@ export default function Dashboard() {
               </div>
             </div>
             <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: '#374151', marginBottom: '0.5rem' }}>Final Score</label>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.5rem' }}>Final Score</label>
               <input type="text" value={scoreText} onChange={e => setScoreText(e.target.value)} placeholder="e.g. 21-15, 21-18" style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px' }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
-              <button className="btn" style={{ padding: '0.3rem 0.8rem', color: '#6b7280', border: '1px solid #d1d5db', fontSize: '0.8rem' }} onClick={abandonMatch} disabled={submittingScore}>
+              <button className="btn" style={{ padding: '0.3rem 0.8rem', color: 'var(--text-light)', border: '1px solid #d1d5db', fontSize: '0.8rem' }} onClick={abandonMatch} disabled={submittingScore}>
                 Abandon Match
               </button>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -481,7 +481,7 @@ export default function Dashboard() {
             <p className="text-light text-sm">Loading…</p>
           ) : clubs.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
-              <p style={{ color: '#6b7280', marginBottom: '0.75rem' }}>You haven't joined any clubs yet.</p>
+              <p style={{ color: 'var(--text-light)', marginBottom: '0.75rem' }}>You haven't joined any clubs yet.</p>
               <Link to="/clubs/join" className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white', textDecoration: 'none', display: 'inline-block' }}>
                 Join or Create a Club
               </Link>
@@ -490,8 +490,14 @@ export default function Dashboard() {
             <div className="flex-col gap-2">
               {clubs.slice(0, 4).map(club => (
                 <div key={club.id} className="flex items-center justify-between">
-                  <Link to={`/clubs/${club.id}`} style={{ fontWeight: 600, color: '#111827', textDecoration: 'none' }}>{club.name}</Link>
-                  <span style={{ backgroundColor: club.club_members[0]?.role === 'admin' ? '#e0e7ff' : '#f3f4f6', color: club.club_members[0]?.role === 'admin' ? '#4f46e5' : '#6b7280', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase' }}>
+                  <Link to={`/clubs/${club.id}`} style={{ fontWeight: 600, color: 'var(--text-dark)', textDecoration: 'none' }}>{club.name}</Link>
+                  <span style={{ 
+                    fontSize: '0.8rem', 
+                    fontWeight: 600, 
+                    color: club.club_members[0]?.role === 'admin' ? 'var(--orange-accent)' : 'var(--accent-color)',
+                    textTransform: 'uppercase',
+                    textShadow: `0 0 5px ${club.club_members[0]?.role === 'admin' ? 'rgba(255, 159, 28, 0.4)' : 'rgba(0, 242, 255, 0.4)'}`
+                  }}>
                     {club.club_members[0]?.role}
                   </span>
                 </div>
@@ -512,7 +518,7 @@ export default function Dashboard() {
           <h2 className="section-title">{ranksTitle}</h2>
           {ranks.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '1rem 0' }}>
-              <p style={{ color: '#6b7280', marginBottom: '0.75rem', fontSize: '0.9rem' }}>You haven't joined any ladders yet.</p>
+              <p style={{ color: 'var(--text-light)', marginBottom: '0.75rem', fontSize: '0.9rem' }}>You haven't joined any ladders yet.</p>
               <Link to="/ladders" style={{ color: 'var(--primary-color)', textDecoration: 'none', fontSize: '0.85rem', fontWeight: 600 }}>Browse Ladders →</Link>
             </div>
           ) : (
@@ -521,20 +527,20 @@ export default function Dashboard() {
                 <Link
                   key={r.id}
                   to={`/clubs/${r.club_id}/ladders/${r.ladder_id}`}
-                  style={{ textDecoration: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.5rem 0', borderBottom: '1px solid #f3f4f6' }}
+                  style={{ textDecoration: 'none', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '0.75rem 0', borderBottom: '1px solid var(--border-color)' }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, color: '#111827', fontSize: '0.9rem' }}>{r.name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>{r.club_name}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#6366f1', fontWeight: 600, marginTop: '2px' }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-dark)', fontSize: '0.9rem' }}>{r.name}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>{r.club_name}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--accent-color)', fontWeight: 700, marginTop: '2px' }}>
                       {r.type === 'doubles' 
-                        ? `Ind. ELO: ${r.elo_rating} | Team ELO: ${r.team_elo}` 
+                        ? `IND. ELO: ${r.elo_rating} | TEAM ELO: ${r.team_elo}` 
                         : `ELO: ${r.elo_rating}`}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--primary-color)' }}>#{r.current_rank}</div>
-                    <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{r.wins}W–{r.losses}L</div>
+                    <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--primary-color)', textShadow: '0 0 10px rgba(34, 197, 94, 0.4)' }}>#{r.current_rank}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{r.wins}W–{r.losses}L</div>
                   </div>
                 </Link>
               ))}
