@@ -117,8 +117,9 @@ export default function Dashboard() {
     try {
       const { data } = await supabase
         .from('ladder_players')
-        .select('current_rank, wins, losses, ladders(id, name, sport, club_id, clubs(name))')
+        .select('current_rank, wins, losses, ladders(id, name, sport, type, club_id, clubs(name))')
         .eq('player_id', user?.id)
+        .gt('current_rank', 0)   // exclude rank-0 ELO placeholder rows from doubles ladders
         .order('current_rank');
       setRanks(data || []);
     } catch (err) {

@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Pencil, X, Save, CheckCircle, XCircle, Plus, Trophy } from 'lucide-react';
+import { ArrowLeft, Pencil, X, Save, CheckCircle, XCircle, Plus, Trophy, Trash2 } from 'lucide-react';
 
 const ALL_SPORTS = ['Badminton', 'Tennis', 'Table Tennis', 'Squash', 'Pickle Ball', 'Paddle'];
 const SPORT_ICONS: Record<string, string> = {
@@ -11,6 +11,7 @@ const SPORT_ICONS: Record<string, string> = {
 };
 
 export default function ClubView() {
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
 
@@ -26,6 +27,15 @@ export default function ClubView() {
   const [editingDesc, setEditingDesc] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+
+  // Inline club name edit
+  const [editingClubName, setEditingClubName] = useState(false);
+  const [clubNameDraft, setClubNameDraft] = useState('');
+  const [savingClubName, setSavingClubName] = useState(false);
+
+  // Inline ladder rename
+  const [renamingLadderId, setRenamingLadderId] = useState<string | null>(null);
+  const [ladderNameDraft, setLadderNameDraft] = useState('');
 
   // Ladders
   const [ladders, setLadders] = useState<any[]>([]);
@@ -156,6 +166,44 @@ export default function ClubView() {
     }
   }
 
+  async function handleDeleteClub() {
+    if (!confirm(`Delete "${club?.name}"? This cannot be undone.`)) return;
+    try {
+      const { error } = await supabase.from('clubs').delete().eq('id', id);
+      if (error) throw error;
+      navigate('/clubs');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete club.');
+    }
+  }
+
+  async function saveClubName() {
+    if (!clubNameDraft.trim()) return;
+    setSavingClubName(true);
+    try {
+      const { error } = await supabase.from('clubs').update({ name: clubNameDraft.trim() }).eq('id', id);
+      if (error) throw error;
+      setClub((prev: any) => ({ ...prev, name: clubNameDraft.trim() }));
+      setEditingClubName(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to rename club.');
+    } finally {
+      setSavingClubName(false);
+    }
+  }
+
+  async function saveLadderName(ladderId: string) {
+    if (!ladderNameDraft.trim()) return;
+    try {
+      const { error } = await supabase.from('ladders').update({ name: ladderNameDraft.trim() }).eq('id', ladderId);
+      if (error) throw error;
+      setLadders(prev => prev.map(l => l.id === ladderId ? { ...l, name: ladderNameDraft.trim() } : l));
+      setRenamingLadderId(null);
+    } catch (err: any) {
+      alert(err.message || 'Failed to rename ladder.');
+    }
+  }
+
   if (loading) return <div style={{ padding: '2rem', color: '#6b7280' }}>Loading club...</div>;
   if (!club) return <div style={{ padding: '2rem', color: '#ef4444' }}>Club not found.</div>;
 
@@ -167,14 +215,49 @@ export default function ClubView() {
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '1rem' }}>
-        <div>
-          <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: '0.25rem' }}>{club.name}</h1>
+        <div style={{ flex: 1 }}>
+          {/* Inline club name edit */}
+          {editingClubName ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <input
+                autoFocus
+                value={clubNameDraft}
+                onChange={e => setClubNameDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveClubName(); if (e.key === 'Escape') setEditingClubName(false); }}
+                style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary-color)', border: '2px solid var(--primary-color)', borderRadius: '6px', padding: '0.1rem 0.5rem', width: '100%', maxWidth: '360px' }}
+              />
+              <button onClick={saveClubName} disabled={savingClubName} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#059669' }}>
+                <Save size={18} />
+              </button>
+              <button onClick={() => setEditingClubName(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#6b7280' }}>
+                <X size={18} />
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+              <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: 0 }}>{club.name}</h1>
+              {isAdmin && (
+                <button
+                  onClick={() => { setClubNameDraft(club.name); setEditingClubName(true); }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '2px' }}
+                  title="Rename club"
+                >
+                  <Pencil size={15} />
+                </button>
+              )}
+            </div>
+          )}
           <p style={{ color: '#6b7280' }}>{club.description || 'No description provided.'}</p>
         </div>
         {isAdmin && (
-          <button onClick={openEdit} className="btn flex items-center gap-2" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }}>
-            <Pencil size={15} /> Edit Club
-          </button>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button onClick={openEdit} className="btn flex items-center gap-2" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }}>
+              <Pencil size={15} /> Edit
+            </button>
+            <button onClick={handleDeleteClub} className="btn" style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+              <Trash2 size={15} /> Delete
+            </button>
+          </div>
         )}
       </div>
 
@@ -252,21 +335,54 @@ export default function ClubView() {
           {club.club_members?.map((m: any) => {
             const p = m.profiles;
             const displayName = p?.nickname || p?.first_name || (m.player_id === user?.id ? 'You' : m.player_id.slice(0, 8) + '…');
+            const isSelf = m.player_id === user?.id;
+            const isTargetAdmin = m.role === 'admin';
             return (
             <div key={m.player_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid #f3f4f6' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 {p?.avatar_url
                   ? <img src={p.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
                   : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
-                <span style={{ color: '#374151' }}>{displayName}{m.player_id === user?.id ? ' (you)' : ''}</span>
+                <span style={{ color: '#374151' }}>{displayName}{isSelf ? ' (you)' : ''}</span>
               </div>
-              <span style={{
-                padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
-                backgroundColor: m.role === 'admin' ? '#e0e7ff' : '#f3f4f6',
-                color: m.role === 'admin' ? '#4f46e5' : '#6b7280',
-              }}>
-                {m.role}
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span style={{
+                  padding: '2px 10px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase',
+                  backgroundColor: isTargetAdmin ? '#e0e7ff' : '#f3f4f6',
+                  color: isTargetAdmin ? '#4f46e5' : '#6b7280',
+                }}>
+                  {m.role}
+                </span>
+                {isAdmin && !isSelf && (
+                  <button
+                    onClick={async () => {
+                      const newRole = isTargetAdmin ? 'member' : 'admin';
+                      const action = isTargetAdmin ? 'remove admin rights from' : 'make admin';
+                      if (!confirm(`Are you sure you want to ${action} ${displayName}?`)) return;
+                      try {
+                        const { error } = await supabase
+                          .from('club_members')
+                          .update({ role: newRole })
+                          .eq('club_id', id)
+                          .eq('player_id', m.player_id);
+                        if (error) throw error;
+                        await loadClub();
+                      } catch (err: any) {
+                        alert(err.message || 'Failed to update role.');
+                      }
+                    }}
+                    style={{
+                      padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
+                      border: `1px solid ${isTargetAdmin ? '#fca5a5' : '#93c5fd'}`,
+                      backgroundColor: isTargetAdmin ? '#fef2f2' : '#eff6ff',
+                      color: isTargetAdmin ? '#dc2626' : '#2563eb',
+                      cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {isTargetAdmin ? 'Remove Admin' : 'Make Admin'}
+                  </button>
+                )}
+              </div>
             </div>
             );
           })}
@@ -342,28 +458,53 @@ export default function ClubView() {
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
             {ladders.map((l: any) => (
-              <Link
-                key={l.id}
-                to={`/clubs/${id}/ladders/${l.id}`}
-                style={{ textDecoration: 'none' }}
+              <div key={l.id} style={{
+                padding: '1rem', borderRadius: '8px', border: '1px solid #e5e7eb',
+                backgroundColor: '#fafafa', transition: 'box-shadow 0.15s',
+                display: 'flex', flexDirection: 'column', gap: '0.4rem',
+              }}
+                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)')}
+                onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
               >
-                <div style={{
-                  padding: '1rem', borderRadius: '8px', border: '1px solid #e5e7eb',
-                  backgroundColor: '#fafafa', transition: 'box-shadow 0.15s',
-                  display: 'flex', flexDirection: 'column', gap: '0.4rem',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)')}
-                  onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-                >
-                  <div style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem' }}>{l.name}</div>
-                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.75rem', padding: '1px 7px', borderRadius: '999px', backgroundColor: '#e0e7ff', color: '#4f46e5' }}>{SPORT_ICONS[l.sport]} {l.sport}</span>
-                    <span style={{ fontSize: '0.75rem', padding: '1px 7px', borderRadius: '999px', backgroundColor: l.type === 'singles' ? '#dbeafe' : '#fce7f3', color: l.type === 'singles' ? '#1d4ed8' : '#be185d' }}>
-                      {l.type === 'singles' ? '👤 Singles' : '👥 Doubles'}
-                    </span>
+                {/* Ladder name row — inline edit or link */}
+                {renamingLadderId === l.id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <input
+                      autoFocus
+                      value={ladderNameDraft}
+                      onChange={e => setLadderNameDraft(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveLadderName(l.id); if (e.key === 'Escape') setRenamingLadderId(null); }}
+                      style={{ flex: 1, fontSize: '0.9rem', fontWeight: 700, border: '1px solid var(--primary-color)', borderRadius: '4px', padding: '0.15rem 0.4rem' }}
+                    />
+                    <button onClick={() => saveLadderName(l.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#059669' }}><Save size={14} /></button>
+                    <button onClick={() => setRenamingLadderId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={14} /></button>
                   </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                    <Link
+                      to={`/clubs/${id}/ladders/${l.id}`}
+                      style={{ fontWeight: 700, color: '#111827', fontSize: '0.95rem', textDecoration: 'none', flex: 1 }}
+                    >
+                      {l.name}
+                    </Link>
+                    {isAdmin && (
+                      <button
+                        onClick={() => { setLadderNameDraft(l.name); setRenamingLadderId(l.id); }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', padding: '1px' }}
+                        title="Rename ladder"
+                      >
+                        <Pencil size={12} />
+                      </button>
+                    )}
+                  </div>
+                )}
+                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.75rem', padding: '1px 7px', borderRadius: '999px', backgroundColor: '#e0e7ff', color: '#4f46e5' }}>{SPORT_ICONS[l.sport]} {l.sport}</span>
+                  <span style={{ fontSize: '0.75rem', padding: '1px 7px', borderRadius: '999px', backgroundColor: l.type === 'singles' ? '#dbeafe' : '#fce7f3', color: l.type === 'singles' ? '#1d4ed8' : '#be185d' }}>
+                    {l.type === 'singles' ? '👤 Singles' : '👥 Doubles'}
+                  </span>
                 </div>
-              </Link>
+              </div>
             ))}
           </div>
         )}
