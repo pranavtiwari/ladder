@@ -91,8 +91,8 @@ export default function LadderStandings() {
         .select('ladder_id, team_id, current_rank, wins, losses, teams!inner(id, name, player1_id, player2_id)')
         .or(`player1_id.eq.${user?.id},player2_id.eq.${user?.id}`, { foreignTable: 'teams' });
 
-      // 4. Merge into GroupedLadder structure — include ALL ladders, not just ones user is in
-      const results: GroupedLadder[] = (allLadders || []).map((lad: any) => {
+      // 4. Merge into GroupedLadder structure
+      const allResults: GroupedLadder[] = (allLadders || []).map((lad: any) => {
         const singles = (sEntries || []).filter((e: any) => e.ladder_id === lad.id);
         const doubles = (dEntries || []).filter((e: any) => e.ladder_id === lad.id);
 
@@ -104,6 +104,9 @@ export default function LadderStandings() {
           activeTeamId: lad.type === 'doubles' ? (doubles[0]?.team_id || '') : '',
         };
       });
+
+      // Filter to ONLY show ladders the user has joined
+      const results = allResults.filter(group => group.entries.length > 0);
 
       setGrouped(results);
       if (results.length > 0) {
@@ -172,15 +175,17 @@ export default function LadderStandings() {
 
       const { data: ladderReqs } = await supabase
         .from('ladder_join_requests')
-        .select('player_id, profiles(nickname, first_name, avatar_url), teams(name)')
+        .select('id, player_id, team_id, profiles(nickname, first_name, avatar_url), teams(name)')
         .eq('ladder_id', group.ladder_id)
         .eq('status', 'pending');
 
       const mergedPending = [
         ...(invites || []).map(i => ({ id: i.id, name: i.name, type: 'INVITED' })),
-        ...(clubReqs || []).map(r => ({ id: r.player_id, name: r.profiles?.nickname || r.profiles?.first_name || 'Anonymous', type: 'PENDING CLUB JOIN' })),
+        ...(clubReqs || []).map(r => ({ id: r.player_id, player_id: r.player_id, name: r.profiles?.nickname || r.profiles?.first_name || 'Anonymous', type: 'PENDING CLUB JOIN' })),
         ...(ladderReqs || []).map(r => ({ 
-          id: r.player_id, 
+          id: r.id, 
+          player_id: r.player_id,
+          team_id: r.team_id,
           name: group.kind === 'singles' ? (r.profiles?.nickname || r.profiles?.first_name || 'Anonymous') : (r.teams?.name || 'Anonymous Team'), 
           type: 'PENDING LADDER JOIN' 
         }))
@@ -248,8 +253,13 @@ export default function LadderStandings() {
         alert('Participants cannot be the same.');
         return;
       }
-      const e1 = standings.find(s => s.id === p1EntryId);
-      const e2 = standings.find(s => s.id === p2EntryId);
+      const e1 = standings.find(s => s.id === p1EntryId) || pendingParticipants.find(p => p.id === p1EntryId);
+      const e2 = standings.find(s => s.id === p2EntryId) || pendingParticipants.find(p => p.id === p2EntryId);
+      if (!e1 || !e2) {
+        alert('Invalid participant selection.');
+        return;
+      }
+      
       if (selected.kind === 'singles') {
         p1Id = e1.player_id;
         p2Id = e2.player_id;
@@ -672,6 +682,15 @@ export default function LadderStandings() {
                           {selected?.kind === 'singles' ? (s.profiles?.nickname || s.profiles?.first_name) : s.teams?.name} (#{s.current_rank})
                         </option>
                       ))}
+                      {pendingParticipants.filter(p => {
+                        if (p.type === 'INVITED') return false;
+                        if (selected?.kind === 'singles') return !!p.player_id;
+                        return !!p.team_id;
+                      }).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} (Pending)
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div style={{ flex: 1 }}>
@@ -681,6 +700,15 @@ export default function LadderStandings() {
                       {standings.map(s => (
                         <option key={s.id} value={s.id}>
                           {selected?.kind === 'singles' ? (s.profiles?.nickname || s.profiles?.first_name) : s.teams?.name} (#{s.current_rank})
+                        </option>
+                      ))}
+                      {pendingParticipants.filter(p => {
+                        if (p.type === 'INVITED') return false;
+                        if (selected?.kind === 'singles') return !!p.player_id;
+                        return !!p.team_id;
+                      }).map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} (Pending)
                         </option>
                       ))}
                     </select>
@@ -694,15 +722,17 @@ export default function LadderStandings() {
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-dark)' }}>
                         <input type="radio" name="whoWonAdmin" checked={whoWon === 'p1'} onChange={() => setWhoWon('p1')} /> 
                         {(() => {
-                          const s = standings.find(s => s.id === p1EntryId);
-                          return selected?.kind === 'singles' ? (s?.profiles?.nickname || 'P1') : (s?.teams?.name || 'P1');
+                          let s = standings.find(s => s.id === p1EntryId);
+                          if (!s) s = pendingParticipants.find(p => p.id === p1EntryId);
+                          return selected?.kind === 'singles' ? (s?.profiles?.nickname || s?.name || 'P1') : (s?.teams?.name || s?.name || 'P1');
                         })()}
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-dark)' }}>
                         <input type="radio" name="whoWonAdmin" checked={whoWon === 'p2'} onChange={() => setWhoWon('p2')} /> 
                         {(() => {
-                          const s = standings.find(s => s.id === p2EntryId);
-                          return selected?.kind === 'singles' ? (s?.profiles?.nickname || 'P2') : (s?.teams?.name || 'P2');
+                          let s = standings.find(s => s.id === p2EntryId);
+                          if (!s) s = pendingParticipants.find(p => p.id === p2EntryId);
+                          return selected?.kind === 'singles' ? (s?.profiles?.nickname || s?.name || 'P2') : (s?.teams?.name || s?.name || 'P2');
                         })()}
                       </label>
                     </div>
@@ -715,7 +745,8 @@ export default function LadderStandings() {
                   <select 
                     value={unscheduledOpponent?.id || ''} 
                     onChange={(e) => {
-                      const opp = standings.find(s => s.id === e.target.value);
+                      let opp = standings.find(s => s.id === e.target.value);
+                      if (!opp) opp = pendingParticipants.find(p => p.id === e.target.value);
                       setUnscheduledOpponent(opp);
                     }}
                     className="input"
@@ -732,6 +763,15 @@ export default function LadderStandings() {
                           : s.teams?.name} (Rank #{s.current_rank})
                       </option>
                     ))}
+                    {pendingParticipants.filter(p => {
+                      if (p.type === 'INVITED') return false;
+                      if (selected?.kind === 'singles') return p.player_id && p.player_id !== user?.id;
+                      return p.team_id && p.team_id !== selected?.activeTeamId;
+                    }).map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Pending)
+                      </option>
+                    ))}
                   </select>
                 </div>
             )}
@@ -746,7 +786,7 @@ export default function LadderStandings() {
                         <input type="radio" name="whoWon" checked={whoWon === 'me'} onChange={() => setWhoWon('me')} /> Me / My Team
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-dark)' }}>
-                        <input type="radio" name="whoWon" checked={whoWon === 'opponent'} onChange={() => setWhoWon('opponent')} /> {selected?.kind === 'singles' ? (unscheduledOpponent.profiles?.nickname || 'Opponent') : 'Opponent Team'}
+                        <input type="radio" name="whoWon" checked={whoWon === 'opponent'} onChange={() => setWhoWon('opponent')} /> {selected?.kind === 'singles' ? (unscheduledOpponent.profiles?.nickname || unscheduledOpponent.name || 'Opponent') : (unscheduledOpponent.teams?.name || unscheduledOpponent.name || 'Opponent Team')}
                       </label>
                     </div>
                   </div>
