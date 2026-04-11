@@ -305,18 +305,20 @@ export default function LadderView() {
       return;
     }
 
-    // Invited-but-not-yet-signed-up members can't be used in a team yet
-    if (String(partner1).startsWith('invite:') || String(partner2).startsWith('invite:')) {
-      alert('Invited members must sign up and join the club before they can be added to a team. Please share your invite link with them first.');
-      setCreatingTeam(false);
-      return;
-    }
+    // Detect invited (not-yet-signed-up) members
+    const partner1IsInvite = String(partner1).startsWith('invite:');
+    const partner2IsInvite = String(partner2).startsWith('invite:');
 
-    // Check if the pair already exists in myTeams (only for non-admin, admins can create any team)
-    if (!isAdmin) {
+    const finalPlayer1 = partner1IsInvite ? null : (partner1 as string);
+    const finalPlayer2 = partner2IsInvite ? null : (partner2 as string);
+    const invitedPartnerId  = partner1IsInvite ? partner1.replace('invite:', '') : null;
+    const invitedPartner2Id = partner2IsInvite ? partner2.replace('invite:', '') : null;
+
+    // Duplicate team check (only for two real members)
+    if (!isAdmin && !partner1IsInvite && !partner2IsInvite) {
       const existingTeam = myTeams.find(
-        (t: any) => (t.player1_id === partner1 && t.player2_id === partner2) ||
-                    (t.player1_id === partner2 && t.player2_id === partner1)
+        (t: any) => (t.player1_id === finalPlayer1 && t.player2_id === finalPlayer2) ||
+                    (t.player1_id === finalPlayer2 && t.player2_id === finalPlayer1)
       );
       if (existingTeam) {
         alert(`You already have a team with this player (${existingTeam.name}). Please use it instead.`);
@@ -328,7 +330,14 @@ export default function LadderView() {
     try {
       const { data, error } = await supabase
         .from('teams')
-        .insert({ club_id: id, name: teamName, player1_id: partner1, player2_id: partner2 })
+        .insert({
+          club_id: id,
+          name: teamName,
+          player1_id: finalPlayer1,
+          player2_id: finalPlayer2,
+          invited_partner_id: invitedPartnerId,
+          invited_partner2_id: invitedPartner2Id,
+        })
         .select()
         .single();
       if (error) throw error;
