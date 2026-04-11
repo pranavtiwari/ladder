@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -168,7 +168,7 @@ export default function LadderView() {
         .eq('ladder_id', ladderId)
         .eq('player_id', user?.id)
         .eq('status', 'pending');
-      setMyPendingRequest(myReqs && myReqs.length > 0);
+      setMyPendingRequest(!!(myReqs && myReqs.length > 0));
     } catch (err) {
       console.error(err);
     } finally {
