@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
-import { Trophy, Swords, X, CheckCircle, XCircle } from 'lucide-react';
+import { Trophy, Swords, X, CheckCircle, XCircle, Share2, Palette } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -30,12 +30,20 @@ export default function LadderStandings() {
   const [standings, setStandings] = useState<any[]>([]);
   const [myRank, setMyRank] = useState<number | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [sortMode, setSortMode] = useState<'rank' | 'elo'>('rank');
 
   // Challenge modal
   const [showChallenge, setShowChallenge] = useState(false);
   const [challengeTarget, setChallengeTarget] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
   const [challengeMsg, setChallengeMsg] = useState('');
+
+  // Unscheduled modal
+  const [showUnscheduled, setShowUnscheduled] = useState(false);
+  const [unscheduledOpponent, setUnscheduledOpponent] = useState<any>(null);
+  const [unscheduledScore, setUnscheduledScore] = useState('');
+  const [unscheduledDate, setUnscheduledDate] = useState(new Date().toISOString().split('T')[0]);
+  const [whoWon, setWhoWon] = useState<'me' | 'opponent'>('me');
 
   useEffect(() => {
     if (user) loadMyLadders();
@@ -138,15 +146,15 @@ export default function LadderStandings() {
         const me = sorted.find((e: any) => e.player_id === user?.id);
         setMyRank(me?.display_rank ?? null);
       } else {
+        // Fetch standings and sort by DB current_rank
         const { data } = await supabase
           .from('ladder_teams')
-          .select('*, teams(id, name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, avatar_url), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, avatar_url))')
+          .select('*, teams(id, name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, avatar_url, elo_rating), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, avatar_url, elo_rating))')
           .eq('ladder_id', group.ladder_id);
-        // Sort by DB current_rank directly and assign display rank
-        const sorted = [...(data || [])].sort((a: any, b: any) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999))
+        const sortedByRank = [...(data || [])].sort((a: any, b: any) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999))
           .map((e: any, i: number) => ({ ...e, display_rank: i + 1 }));
-        setStandings(sorted);
-        const activeTeamEntry = sorted.find((e: any) => e.team_id === group.activeTeamId);
+        setStandings(sortedByRank);
+        const activeTeamEntry = sortedByRank.find((e: any) => e.team_id === group.activeTeamId);
         setMyRank(activeTeamEntry?.display_rank ?? null);
       }
     } catch (err) {
@@ -155,6 +163,11 @@ export default function LadderStandings() {
       setLoadingDetails(false);
     }
   }
+
+  const getSortedStandings = () => {
+    if (sortMode === 'rank') return standings;
+    return [...standings].sort((a, b) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800));
+  };
 
   // Update which team is "active" in the left pane without re-fetching standings
   function setActiveTeam(ladderId: string, teamId: string) {
@@ -190,6 +203,51 @@ export default function LadderStandings() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function submitUnscheduledResult() {
+    if (!selected || !unscheduledOpponent || !unscheduledScore) return;
+    setSubmitting(true);
+    try {
+      const isSingles = selected.kind === 'singles';
+      const myId = isSingles ? user?.id : selected.activeTeamId;
+      const oppId = isSingles ? unscheduledOpponent.player_id : unscheduledOpponent.team_id;
+      
+      const { error } = await supabase.from('matches').insert({
+        ladder_id: selected.ladder_id,
+        ...(isSingles
+          ? { challenger_id: myId, defender_id: oppId, winner_id: whoWon === 'me' ? myId : oppId }
+          : { challenger_team_id: myId, defender_team_id: oppId, winner_team_id: whoWon === 'me' ? myId : oppId }),
+        score_text: unscheduledScore,
+        played_at: new Date(unscheduledDate).toISOString(),
+        status: 'score_submitted',
+        score_submitted_by: user?.id,
+        score_submitted_at: new Date().toISOString(),
+        is_unscheduled: true,
+      });
+      if (error) throw error;
+      setShowUnscheduled(false);
+      setUnscheduledScore('');
+    } catch (err: any) {
+      alert(err.message || 'Failed to record result.');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function handleDownloadReport() {
+    if (!selected || !selected.ladders) return;
+    const clubName = selected.ladders.clubs?.name || 'Unknown';
+    const ladderName = selected.ladders.name || 'Unnamed';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const reportUrl = `${window.location.origin}/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
+    
+    // Copy link
+    navigator.clipboard.writeText(reportUrl);
+    alert('Shareable report link copied to clipboard!\nGenerating download...');
+    
+    // Trigger download (opens the public report page)
+    window.open(reportUrl); 
   }
 
   if (loading) return <div style={{ padding: '2rem', color: 'var(--text-light)' }}>Loading…</div>;
@@ -327,12 +385,45 @@ export default function LadderStandings() {
                       })()}
                     </div>
                   </div>
-                  <Link
-                    to={`/clubs/${selected.ladders?.club_id}/ladders/${selected.ladder_id}`}
-                    style={{ fontSize: '0.8rem', color: 'var(--primary-color)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <button
+                      onClick={() => setSortMode(sortMode === 'rank' ? 'elo' : 'rank')}
+                      className="btn"
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', backgroundColor: 'var(--secondary-color)', border: '1px solid var(--border-color)', color: 'white' }}
+                    >
+                      Sort: {sortMode === 'rank' ? 'Ladder Rank' : 'ELO Rating'}
+                    </button>
+                    <button
+                      onClick={handleDownloadReport}
+                      className="btn"
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', backgroundColor: 'var(--primary-color)', color: 'white' }}
+                    >
+                      <Share2 size={13} style={{ marginRight: '0.3rem' }} /> Report
+                    </button>
+                    <Link
+                      to={`/clubs/${selected.ladders?.club_id}/ladders/${selected.ladder_id}`}
+                      style={{ fontSize: '0.8rem', color: 'var(--primary-color)', textDecoration: 'none', whiteSpace: 'nowrap' }}
+                    >
+                      Full page →
+                    </Link>
+                  </div>
+                </div>
+
+                {/* Sub-header for Unscheduled */}
+                <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(255, 255, 255, 0.01)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-light)' }}>
+                    Ranked matches update ELO. Unscheduled matches shift ±1 rank.
+                  </span>
+                  <button
+                    onClick={() => {
+                      setUnscheduledOpponent(null);
+                      setShowUnscheduled(true);
+                    }}
+                    className="btn btn-outline"
+                    style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', fontWeight: 600 }}
                   >
-                    Full page →
-                  </Link>
+                    Record Unscheduled
+                  </button>
                 </div>
 
                 {/* Standings rows */}
@@ -341,7 +432,7 @@ export default function LadderStandings() {
                 ) : standings.length === 0 ? (
                   <div style={{ padding: '3rem', color: 'var(--text-light)', textAlign: 'center' }}>No entries yet.</div>
                 ) : selected.kind === 'singles' ? (
-                  standings.map((e: any, i: number) => {
+                  getSortedStandings().map((e: any, i: number) => {
                     const isMe = e.player_id === user?.id;
                     const name = e.profiles?.nickname || e.profiles?.first_name || '—';
                     const rank = e.display_rank ?? (i + 1);
@@ -383,7 +474,7 @@ export default function LadderStandings() {
                     );
                   })
                 ) : (
-                  standings.map((e: any, i: number) => {
+                  getSortedStandings().map((e: any, i: number) => {
                     const myTeamIds = new Set(selected.entries.map((en: any) => en.team_id));
                     const isMe = myTeamIds.has(e.team_id);
                     const teamName = e.teams?.name || 'Unnamed Team';
@@ -468,6 +559,95 @@ export default function LadderStandings() {
           </div>
         </div>
       )}
+      {/* Unscheduled Match Modal */}
+      {showUnscheduled && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '480px', position: 'relative' }}>
+            <button onClick={() => setShowUnscheduled(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
+              <X size={20} />
+            </button>
+            <h2 style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--text-dark)', marginBottom: '1rem' }}>Record Unscheduled Match</h2>
+            
+            <div style={{ marginBottom: '1.25rem' }}>
+              <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-light)', marginBottom: '0.5rem' }}>SELECT OPPONENT</label>
+              <select 
+                value={unscheduledOpponent?.id || ''} 
+                onChange={(e) => {
+                  const opp = standings.find(s => s.id === e.target.value);
+                  setUnscheduledOpponent(opp);
+                }}
+                className="input"
+                style={{ width: '100%', padding: '0.6rem' }}
+              >
+                <option value="">-- Choose Opponent --</option>
+                {standings.filter(s => {
+                   if (selected?.kind === 'singles') return s.player_id !== user?.id;
+                   return s.team_id !== selected?.activeTeamId;
+                }).map(s => (
+                  <option key={s.id} value={s.id}>
+                    {selected?.kind === 'singles' 
+                      ? (s.profiles?.nickname || s.profiles?.first_name)
+                      : s.teams?.name} (Rank #{s.current_rank})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {unscheduledOpponent && (
+              <>
+                <div style={{ marginBottom: '1.25rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-light)', marginBottom: '0.5rem' }}>WHO WON?</label>
+                  <div style={{ display: 'flex', gap: '1rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-dark)' }}>
+                      <input type="radio" name="whoWon" checked={whoWon === 'me'} onChange={() => setWhoWon('me')} /> Me / My Team
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', color: 'var(--text-dark)' }}>
+                      <input type="radio" name="whoWon" checked={whoWon === 'opponent'} onChange={() => setWhoWon('opponent')} /> {selected?.kind === 'singles' ? (unscheduledOpponent.profiles?.nickname || 'Opponent') : 'Opponent Team'}
+                    </label>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-light)', marginBottom: '0.5rem' }}>SCORE</label>
+                    <input 
+                      type="text" 
+                      value={unscheduledScore} 
+                      onChange={e => setUnscheduledScore(e.target.value)}
+                      placeholder="e.g. 21-15, 21-18"
+                      className="input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 600, color: 'var(--text-light)', marginBottom: '0.5rem' }}>DATE</label>
+                    <input 
+                      type="date" 
+                      value={unscheduledDate} 
+                      onChange={e => setUnscheduledDate(e.target.value)}
+                      className="input"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                  <button className="btn btn-outline" onClick={() => setShowUnscheduled(false)}>Cancel</button>
+                  <button 
+                    className="btn" 
+                    disabled={submitting || !unscheduledScore}
+                    onClick={submitUnscheduledResult}
+                    style={{ backgroundColor: 'var(--primary-color)', color: 'white' }}
+                  >
+                    {submitting ? 'Saving...' : 'Submit Result'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

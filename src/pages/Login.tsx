@@ -9,7 +9,7 @@ export default function Login() {
   }
 
   return (
-    <div className="app-container items-center justify-between" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }}>
+    <div className="app-container items-center justify-between" style={{ backgroundColor: '#1e293b', color: 'white' }}>
       <div className="flex-col items-center justify-between" style={{ width: '100%', maxWidth: 400, margin: 'auto', padding: '2rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '3rem' }}>
           <h1 className="page-title" style={{ color: 'white', fontSize: '2.5rem', marginBottom: '0.5rem' }}>RacquetClub</h1>

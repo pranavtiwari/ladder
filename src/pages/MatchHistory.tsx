@@ -38,7 +38,7 @@ export default function MatchHistory() {
         .select(`
           id, status, score_text, played_at, challenger_id, defender_id, winner_id,
           challenger_team_id, defender_team_id, winner_team_id,
-          score_submitted_by,
+          score_submitted_by, is_unscheduled, score_submitted_at,
           ladders(id, name, sport, type, club_id, clubs(name)),
           challenger:profiles!matches_challenger_id_fkey(id, nickname, first_name, avatar_url),
           defender:profiles!matches_defender_id_fkey(id, nickname, first_name, avatar_url),
@@ -49,7 +49,24 @@ export default function MatchHistory() {
         .or(`challenger_id.eq.${user?.id},defender_id.eq.${user?.id}${teamFilter}`)
         .order('played_at', { ascending: false });
       if (error) throw error;
-      setMatches(data || []);
+      
+      const fetchedMatches = data || [];
+      
+      // Auto-accept results older than 24h
+      const now = new Date();
+      for (const m of fetchedMatches) {
+        if (m.status === 'score_submitted' && m.score_submitted_at) {
+          const submittedAt = new Date(m.score_submitted_at);
+          const hoursPassed = (now.getTime() - submittedAt.getTime()) / (1000 * 60 * 60);
+          if (hoursPassed >= 24) {
+             // In a real app, this should be a DB job, but we'll trigger it here for the user visibility
+             await supabase.from('matches').update({ status: 'completed' }).eq('id', m.id);
+             m.status = 'completed'; // optimistic update for this UI session
+          }
+        }
+      }
+
+      setMatches(fetchedMatches);
     } catch (err) {
       console.error(err);
     } finally {
@@ -93,35 +110,6 @@ export default function MatchHistory() {
     try {
       const { error } = await supabase.from('matches').update({ status: 'completed' }).eq('id', match.id);
       if (error) throw error;
-
-      // Rank swap: if challenger won, swap ranks
-      const ladder = match.ladders;
-      if (!ladder) return;
-      const isSingles = ladder.type === 'singles';
-      const challengerId = isSingles ? match.challenger_id : match.challenger_team_id;
-      const defenderId = isSingles ? match.defender_id : match.defender_team_id;
-      const winnerId = isSingles ? match.winner_id : match.winner_team_id;
-
-      if (winnerId === challengerId) {
-        const table = isSingles ? 'ladder_players' : 'ladder_teams';
-        const idCol = isSingles ? 'player_id' : 'team_id';
-        const { data: cEntry } = await supabase.from(table).select('current_rank').eq('ladder_id', ladder.id).eq(idCol, challengerId).single();
-        const { data: dEntry } = await supabase.from(table).select('current_rank').eq('ladder_id', ladder.id).eq(idCol, defenderId).single();
-        if (cEntry && dEntry && cEntry.current_rank > dEntry.current_rank) {
-          await supabase.from(table).update({ current_rank: dEntry.current_rank }).eq('ladder_id', ladder.id).eq(idCol, challengerId);
-          await supabase.from(table).update({ current_rank: cEntry.current_rank }).eq('ladder_id', ladder.id).eq(idCol, defenderId);
-        }
-      }
-
-      // Update win/loss stats
-      const table = isSingles ? 'ladder_players' : 'ladder_teams';
-      const idCol = isSingles ? 'player_id' : 'team_id';
-      const loserId = winnerId === challengerId ? defenderId : challengerId;
-      const { data: wData } = await supabase.from(table).select('wins').eq('ladder_id', ladder.id).eq(idCol, winnerId).single();
-      const { data: lData } = await supabase.from(table).select('losses').eq('ladder_id', ladder.id).eq(idCol, loserId).single();
-      await supabase.from(table).update({ wins: (wData?.wins || 0) + 1 }).eq('ladder_id', ladder.id).eq(idCol, winnerId);
-      await supabase.from(table).update({ losses: (lData?.losses || 0) + 1 }).eq('ladder_id', ladder.id).eq(idCol, loserId);
-
       await loadMatches();
     } catch (err: any) {
       alert(err.message || 'Failed to confirm score.');
@@ -166,7 +154,7 @@ export default function MatchHistory() {
               result = won ? 'WIN' : 'LOSS';
               resultClass = won ? 'badge-neon-green' : 'badge-neon-orange';
             } else if (match.status === 'score_submitted') {
-              result = 'PENDING CONFIRMATION';
+              result = match.is_unscheduled ? 'UNCONFIRMED RESULT' : 'PENDING CONFIRMATION';
               resultClass = 'badge-neon-cyan';
             } else if (match.status === 'accepted') {
               result = 'IN PROGRESS';

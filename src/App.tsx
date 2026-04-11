@@ -12,6 +12,7 @@ import MatchHistory from './pages/MatchHistory';
 import Login from './pages/Login';
 import Profile from './pages/Profile';
 import Rules from './pages/Rules';
+import PublicReport from './pages/PublicReport';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -32,6 +33,7 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/reports/:clubName/:ladderName/:date" element={<PublicReport />} />
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Dashboard />} />
           <Route path="clubs" element={<ClubDetails />} />
