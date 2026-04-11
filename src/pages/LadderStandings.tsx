@@ -181,14 +181,18 @@ export default function LadderStandings() {
 
       const mergedPending = [
         ...(invites || []).map(i => ({ id: i.id, name: i.name, type: 'INVITED' })),
-        ...(clubReqs || []).map(r => ({ id: r.player_id, player_id: r.player_id, name: r.profiles?.nickname || r.profiles?.first_name || 'Anonymous', type: 'PENDING CLUB JOIN' })),
-        ...(ladderReqs || []).map(r => ({ 
-          id: r.id, 
-          player_id: r.player_id,
-          team_id: r.team_id,
-          name: group.kind === 'singles' ? (r.profiles?.nickname || r.profiles?.first_name || 'Anonymous') : (r.teams?.name || 'Anonymous Team'), 
-          type: 'PENDING LADDER JOIN' 
-        }))
+        ...(clubReqs || []).map(r => { const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles; return { id: r.player_id, player_id: r.player_id, name: (p as any)?.nickname || (p as any)?.first_name || 'Anonymous', type: 'PENDING CLUB JOIN' }; }),
+        ...(ladderReqs || []).map(r => { 
+          const p = Array.isArray(r.profiles) ? r.profiles[0] : r.profiles; 
+          const t = Array.isArray(r.teams) ? r.teams[0] : r.teams;
+          return { 
+            id: r.id, 
+            player_id: r.player_id,
+            team_id: r.team_id,
+            name: group.kind === 'singles' ? ((p as any)?.nickname || (p as any)?.first_name || 'Anonymous') : ((t as any)?.name || 'Anonymous Team'), 
+            type: 'PENDING LADDER JOIN' 
+          }; 
+        })
       ];
       setPendingParticipants(mergedPending);
 
@@ -271,7 +275,7 @@ export default function LadderStandings() {
       }
     } else if (unscheduledOpponent) {
       const isSingles = selected.kind === 'singles';
-      p1Id = isSingles ? user?.id : selected.activeTeamId;
+      p1Id = (isSingles ? user?.id : selected.activeTeamId) ?? '';
       p2Id = isSingles ? unscheduledOpponent.player_id : unscheduledOpponent.team_id;
       winnerId = whoWon === 'me' ? p1Id : p2Id;
     } else {

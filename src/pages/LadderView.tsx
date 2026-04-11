@@ -22,7 +22,7 @@ export default function LadderView() {
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState('');
-  const [ladderPlayersMap, setLadderPlayersMap] = useState<Map<string, number>>(new Map());
+
   const [activeTeamId, setActiveTeamId] = useState<string>('');
   const [isAdmin, setIsAdmin] = useState(false);
 
@@ -141,9 +141,7 @@ export default function LadderView() {
         const sorted = sortByRank(teams || []);
         setEntries(sorted);
 
-        const { data: lPlayers } = await supabase.from('ladder_players').select('*').eq('ladder_id', ladderId);
-        const lPMap = new Map((lPlayers || []).map((p: any) => [p.player_id, p.elo_rating]));
-        setLadderPlayersMap(lPMap);
+
 
         // My teams in this club
         const { data: mt } = await supabase
@@ -544,17 +542,6 @@ export default function LadderView() {
     }
   }
 
-  async function cancelInvitation(inviteId: string) {
-    if (!confirm('Cancel this invitation?')) return;
-    try {
-      const { error } = await supabase.from('member_invitations').delete().eq('id', inviteId);
-      if (error) throw error;
-      setPendingInvites(prev => prev.filter(i => i.id !== inviteId));
-    } catch (err: any) {
-      alert(err.message || 'Failed to cancel invitation.');
-    }
-  }
-
   async function handleRequest(reqId: string, approved: boolean, playerId: string, teamId: string | null, source: string = 'ladder') {
     setProcessingReqId(reqId);
     try {
@@ -613,6 +600,12 @@ export default function LadderView() {
 
   async function handleAddParticipant() {
     if (!participantToAdd) return;
+
+    if (String(participantToAdd).startsWith('invite:')) {
+      alert('Invited members must sign up and join the club before they can be added to the ladder directly. Please ask them to accept their invite.');
+      return;
+    }
+
     setProcessingAdd(true);
     try {
       const isSingles = ladder.type === 'singles';
