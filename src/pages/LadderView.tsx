@@ -37,6 +37,8 @@ export default function LadderView() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
   const [sendEmail, setSendEmail] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [pendingJoinRequests, setPendingJoinRequests] = useState<any[]>([]);
   const [inviting, setInviting] = useState(false);
 
   // For doubles team creation
@@ -48,6 +50,12 @@ export default function LadderView() {
 
   const [selectedTeam, setSelectedTeam] = useState('');
   const [myMatches, setMyMatches] = useState<any[]>([]);
+
+  // Add Participant
+  const [showAddParticipant, setShowAddParticipant] = useState(false);
+  const [participantToAdd, setParticipantToAdd] = useState('');
+  const [processingAdd, setProcessingAdd] = useState(false);
+  const [allClubTeams, setAllClubTeams] = useState<any[]>([]);
 
   // Sync activeTeamId when entries/myTeams change (must be before any early returns)
   useEffect(() => {
@@ -61,6 +69,26 @@ export default function LadderView() {
   const [challengeTarget, setChallengeTarget] = useState<any>(null);
   const [submittingChallenge, setSubmittingChallenge] = useState(false);
   const [challengeErr, setChallengeErr] = useState('');
+  const [challengeWithTeamId, setChallengeWithTeamId] = useState<string>('');
+
+  // Quick Record Match
+  const [quickRecordTarget, setQuickRecordTarget] = useState<any>(null);
+  const [qrScoreText, setQrScoreText] = useState('');
+  const [qrWinnerId, setQrWinnerId] = useState('');
+  const [submittingQuickRecord, setSubmittingQuickRecord] = useState(false);
+  const [qrErr, setQrErr] = useState('');
+
+  // Admin Match Entry
+  const [showAdminMatchModal, setShowAdminMatchModal] = useState(false);
+  const [adminP1Id, setAdminP1Id] = useState('');
+  const [adminP2Id, setAdminP2Id] = useState('');
+  const [adminWinnerId, setAdminWinnerId] = useState('');
+  const [adminScore, setAdminScore] = useState('');
+  const [submittingAdminMatch, setSubmittingAdminMatch] = useState(false);
+
+  // Match History logic
+  const [recentMatches, setRecentMatches] = useState<any[]>([]);
+  const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
 
   useEffect(() => {
     if (ladderId && user) load();
@@ -129,15 +157,64 @@ export default function LadderView() {
         const meTeamIds = (mt || []).map((t: any) => t.id);
         const joined = sorted.find((lt: any) => meTeamIds.includes(lt.team_id));
         setMyRank(joined?.display_rank ?? null);
-
-        // For displaying club members to pick a partner
-        const { data: members } = await supabase
-          .from('club_members')
-          .select('player_id, profiles(nickname, first_name, avatar_url)')
-          .eq('club_id', id)
-          .neq('player_id', user?.id);
-        setClubMembers(members || []);
       }
+
+      // Load all club members for "Add Participant" / admin select
+      const { data: members } = await supabase
+        .from('club_members')
+        .select('player_id, profiles(nickname, first_name)')
+        .eq('club_id', id);
+      
+      // Also include pending invited members so they can be added to teams
+      const { data: invitedMembers } = await supabase
+        .from('member_invitations')
+        .select('id, name, email')
+        .eq('club_id', id);
+      
+      const invitedAsPseudoMembers = (invitedMembers || []).map((inv: any) => ({
+        player_id: `invite:${inv.id}`,  // synthetic ID to distinguish
+        profiles: { nickname: `${inv.name} (Invited)`, first_name: inv.name },
+        _isInvite: true,
+        _inviteEmail: inv.email,
+      }));
+      
+      setClubMembers([...(members || []), ...invitedAsPseudoMembers]);
+
+      // Load all teams in club for "Add Participant"
+      const { data: act } = await supabase
+        .from('teams')
+        .select('*')
+        .eq('club_id', id);
+      setAllClubTeams(act || []);
+
+      // Load pending members (Invitations, Club Requests, and Ladder Join Requests) for ALL ladder types
+      const { data: pInvites } = await supabase
+        .from('member_invitations')
+        .select('*')
+        .eq('ladder_id', ladderId);
+      setPendingInvites(pInvites || []);
+
+      // Ladder join requests (everyone should see these as pending at the bottom)
+      const { data: lReqs } = await supabase
+        .from('ladder_join_requests')
+        .select('id, player_id, team_id, profiles(nickname, first_name, last_name, avatar_url), teams(name)')
+        .eq('ladder_id', ladderId)
+        .eq('status', 'pending');
+        
+      const ladderReqsMerged = (lReqs || []).map((r: any) => ({ ...r, source: 'ladder' }));
+
+      const { data: pClubReqs } = await supabase
+        .from('club_join_requests')
+        .select('id, player_id, profiles(nickname, first_name, last_name, avatar_url), ladder_id')
+        .eq('club_id', id)
+        .eq('status', 'pending');
+        
+      const clubReqsMerged = (pClubReqs || [])
+        .filter((r: any) => r.ladder_id === ladderId)
+        .map((r: any) => ({ ...r, source: 'club' }));
+
+      const mergedLadderPendings = [...ladderReqsMerged, ...clubReqsMerged];
+      setPendingJoinRequests(mergedLadderPendings);
 
       // Load my active matches in this ladder
       const { data: myMatchesData } = await supabase
@@ -156,10 +233,12 @@ export default function LadderView() {
       if (membership?.role === 'admin') {
         const { data: reqs } = await supabase
           .from('ladder_join_requests')
-          .select('id, player_id, team_id, status, created_at, profiles(nickname, first_name, avatar_url), teams(name)')
+          .select('id, player_id, team_id, status, created_at, profiles(nickname, first_name, last_name, avatar_url), teams(name)')
           .eq('ladder_id', ladderId)
           .eq('status', 'pending');
-        setJoinRequests(reqs || []);
+        
+        const adminLadderReqs = (reqs || []).map((r: any) => ({ ...r, source: 'ladder' }));
+        setJoinRequests([...adminLadderReqs, ...clubReqsMerged]);
       }
 
       const { data: myReqs } = await supabase
@@ -169,6 +248,22 @@ export default function LadderView() {
         .eq('player_id', user?.id)
         .eq('status', 'pending');
       setMyPendingRequest(!!(myReqs && myReqs.length > 0));
+
+      // Load recent ladder matches
+      const { data: recentData } = await supabase
+        .from('matches')
+        .select(`
+          id, status, score_text, played_at, challenger_id, defender_id, winner_id,
+          challenger_team_id, defender_team_id, winner_team_id,
+          challenger:profiles!matches_challenger_id_fkey(nickname, first_name),
+          defender:profiles!matches_defender_id_fkey(nickname, first_name),
+          challenger_team:teams!matches_challenger_team_id_fkey(name),
+          defender_team:teams!matches_defender_team_id_fkey(name)
+        `)
+        .eq('ladder_id', ladderId)
+        .order('played_at', { ascending: false })
+        .limit(10);
+      setRecentMatches(recentData || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -203,30 +298,55 @@ export default function LadderView() {
     e.preventDefault();
     setCreatingTeam(true);
 
-    // Check if the pair already exists in myTeams
-    const existingTeam = myTeams.find(
-      (t: any) => (t.player1_id === user?.id && t.player2_id === partner) ||
-                  (t.player1_id === partner && t.player2_id === user?.id)
-    );
+    const partner1 = isAdmin ? (adminP1Id || user?.id) : user?.id;
+    const partner2 = partner;
 
-    if (existingTeam) {
-      alert(`You already have a team with this player (${existingTeam.name}). Please use it instead.`);
+    if (!partner1 || !partner2) {
+      alert('Please select both partners.');
       setCreatingTeam(false);
       return;
+    }
+
+    // Invited-but-not-yet-signed-up members can't be used in a team yet
+    if (String(partner1).startsWith('invite:') || String(partner2).startsWith('invite:')) {
+      alert('Invited members must sign up and join the club before they can be added to a team. Please share your invite link with them first.');
+      setCreatingTeam(false);
+      return;
+    }
+
+    // Check if the pair already exists in myTeams (only for non-admin, admins can create any team)
+    if (!isAdmin) {
+      const existingTeam = myTeams.find(
+        (t: any) => (t.player1_id === partner1 && t.player2_id === partner2) ||
+                    (t.player1_id === partner2 && t.player2_id === partner1)
+      );
+      if (existingTeam) {
+        alert(`You already have a team with this player (${existingTeam.name}). Please use it instead.`);
+        setCreatingTeam(false);
+        return;
+      }
     }
 
     try {
       const { data, error } = await supabase
         .from('teams')
-        .insert({ club_id: id, name: teamName, player1_id: user?.id, player2_id: partner })
+        .insert({ club_id: id, name: teamName, player1_id: partner1, player2_id: partner2 })
         .select()
         .single();
       if (error) throw error;
-      setMyTeams(prev => [...prev, data]);
-      setSelectedTeam(data.id);
+      
+      if (!isAdmin) {
+        setMyTeams((prev: any) => [...prev, data]);
+        setSelectedTeam(data.id);
+      } else {
+        alert('Team created successfully. You can now join it to the ladder if desired, or it will be available for selection.');
+      }
+      
       setShowCreateTeam(false);
       setTeamName('');
       setPartner('');
+      setAdminP1Id('');
+      await load(); // refresh to update availability
     } catch (err: any) {
       alert(err.message || 'Failed to create team.');
     } finally {
@@ -271,28 +391,118 @@ export default function LadderView() {
     }
   }
 
-  const [challengeWithTeamId, setChallengeWithTeamId] = useState('');
-
   async function submitChallenge() {
     if (!challengeTarget) return;
     setSubmittingChallenge(true);
     setChallengeErr('');
     try {
-      const isSinglesLadder = ladder.type === 'singles';
-      const { error } = await supabase.from('matches').insert({
+      const payload: any = {
         ladder_id: ladderId,
-        ...(isSinglesLadder
-          ? { challenger_id: user?.id, defender_id: challengeTarget.player_id }
-          : { challenger_team_id: challengeWithTeamId || myTeamsInLadder[0]?.team_id, defender_team_id: challengeTarget.team_id }),
-        status: 'pending',
-      });
+        challenger_id: user?.id,
+        defender_id: isSingles ? challengeTarget.player_id : null,
+        challenger_team_id: isSingles ? null : (challengeWithTeamId || activeTeamId || myTeamsInLadder[0]?.team_id),
+        defender_team_id: isSingles ? null : challengeTarget.team_id,
+        status: 'pending'
+      };
+
+      const { error } = await supabase.from('matches').insert(payload);
       if (error) throw error;
+      await load();
       setChallengeTarget(null);
-      await load(); // Reload to update UI
+      alert('Challenge sent!');
     } catch (err: any) {
       setChallengeErr(err.message || 'Failed to send challenge.');
     } finally {
       setSubmittingChallenge(false);
+    }
+  }
+
+  async function submitQuickRecord() {
+    if (!quickRecordTarget || !qrWinnerId) return;
+    setSubmittingQuickRecord(true);
+    setQrErr('');
+    try {
+      const payload: any = {
+        ladder_id: ladderId,
+        challenger_id: user?.id,
+        defender_id: isSingles ? quickRecordTarget.player_id : null,
+        challenger_team_id: isSingles ? null : (activeTeamId || myTeamsInLadder[0]?.team_id),
+        defender_team_id: isSingles ? null : quickRecordTarget.team_id,
+        status: 'score_submitted',
+        score_text: qrScoreText,
+        score_submitted_by: user?.id,
+        score_submitted_at: new Date().toISOString()
+      };
+
+      if (isSingles) {
+        payload.winner_id = qrWinnerId;
+      } else {
+        payload.winner_team_id = qrWinnerId;
+      }
+
+      const { error } = await supabase.from('matches').insert(payload);
+      if (error) throw error;
+      
+      setQuickRecordTarget(null);
+      setQrScoreText('');
+      setQrWinnerId('');
+      alert('Result submitted! Your opponent needs to confirm this on their dashboard.');
+      await load();
+    } catch (err: any) {
+      setQrErr(err.message || 'Failed to record result.');
+    } finally {
+      setSubmittingQuickRecord(false);
+    }
+  }
+
+  async function submitAdminMatch() {
+    if (!adminP1Id || !adminP2Id || !adminWinnerId || !adminScore) {
+      alert('Please fill all fields.');
+      return;
+    }
+    if (adminP1Id === adminP2Id) {
+      alert('Participants cannot be the same.');
+      return;
+    }
+    
+    setSubmittingAdminMatch(true);
+    try {
+      const { error } = await supabase.from('matches').insert({
+        ladder_id: ladderId,
+        ...(isSingles
+          ? { challenger_id: adminP1Id, defender_id: adminP2Id, winner_id: adminWinnerId }
+          : { challenger_team_id: adminP1Id, defender_team_id: adminP2Id, winner_team_id: adminWinnerId }),
+        score_text: adminScore,
+        status: 'completed', // Admin results are final
+        played_at: new Date().toISOString(),
+      });
+      if (error) throw error;
+      
+      alert('Match recorded successfully!');
+      setShowAdminMatchModal(false);
+      setAdminP1Id('');
+      setAdminP2Id('');
+      setAdminWinnerId('');
+      setAdminScore('');
+      await load();
+    } catch (err: any) {
+      alert(err.message || 'Failed to record admin match.');
+    } finally {
+      setSubmittingAdminMatch(false);
+    }
+  }
+
+  async function handleDeleteLadderMatch(matchId: string) {
+    if (!window.confirm('Are you sure you want to delete this match result?')) return;
+    setDeletingMatchId(matchId);
+    try {
+      const { error } = await supabase.from('matches').delete().eq('id', matchId);
+      if (error) throw error;
+      setRecentMatches(prev => prev.filter(m => m.id !== matchId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete match.');
+    } finally {
+      setDeletingMatchId(null);
     }
   }
 
@@ -334,14 +544,32 @@ export default function LadderView() {
     }
   }
 
-  async function handleRequest(reqId: string, approved: boolean, playerId: string, teamId: string | null) {
+  async function cancelInvitation(inviteId: string) {
+    if (!confirm('Cancel this invitation?')) return;
+    try {
+      const { error } = await supabase.from('member_invitations').delete().eq('id', inviteId);
+      if (error) throw error;
+      setPendingInvites(prev => prev.filter(i => i.id !== inviteId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel invitation.');
+    }
+  }
+
+  async function handleRequest(reqId: string, approved: boolean, playerId: string, teamId: string | null, source: string = 'ladder') {
     setProcessingReqId(reqId);
     try {
       const newStatus = approved ? 'approved' : 'rejected';
-      const { error: updateErr } = await supabase.from('ladder_join_requests').update({ status: newStatus }).eq('id', reqId);
+      const tableName = source === 'club' ? 'club_join_requests' : 'ladder_join_requests';
+      const { error: updateErr } = await supabase.from(tableName).update({ status: newStatus }).eq('id', reqId);
       if (updateErr) throw updateErr;
 
       if (approved) {
+        if (source === 'club') {
+          // Add them to the club officially
+          const { error: clubInsertErr } = await supabase.from('club_members').insert({ club_id: id, player_id: playerId, role: 'member' });
+          if (clubInsertErr) throw clubInsertErr;
+        }
+
         if (ladder.type === 'singles') {
           const nextRank = entries.length + 1;
           const { error } = await supabase.from('ladder_players').insert({ ladder_id: ladderId, player_id: playerId, current_rank: nextRank });
@@ -351,7 +579,7 @@ export default function LadderView() {
           const { error } = await supabase.from('ladder_teams').insert({ ladder_id: ladderId, team_id: teamId, current_rank: nextRank });
           if (error) throw error;
           
-          const t = myTeams.find(tea => tea.id === teamId);
+          const t = allClubTeams.find(tea => tea.id === teamId);
           if (t) {
             await supabase.from('ladder_players').insert([
               { ladder_id: ladderId, player_id: t.player1_id, current_rank: 0 },
@@ -380,6 +608,45 @@ export default function LadderView() {
       alert(err.message || 'Failed to toggle privacy.');
     } finally {
       setTogglingPrivacy(false);
+    }
+  }
+
+  async function handleAddParticipant() {
+    if (!participantToAdd) return;
+    setProcessingAdd(true);
+    try {
+      const isSingles = ladder.type === 'singles';
+      const nextRank = entries.length + (pendingJoinRequests.length || 0) + 1; // Put at the absolute bottom
+      
+      if (isSingles) {
+        const { error } = await supabase
+          .from('ladder_players')
+          .insert({ ladder_id: ladderId, player_id: participantToAdd, current_rank: nextRank });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('ladder_teams')
+          .insert({ ladder_id: ladderId, team_id: participantToAdd, current_rank: nextRank });
+        if (error) throw error;
+        
+        // Also ensure ladder_players exist for individual ELO
+        const t = allClubTeams.find(tea => tea.id === participantToAdd);
+        if (t) {
+          await supabase.from('ladder_players').insert([
+            { ladder_id: ladderId, player_id: t.player1_id, current_rank: 0 },
+            { ladder_id: ladderId, player_id: t.player2_id, current_rank: 0 }
+          ]).select().then(() => {}); 
+        }
+      }
+      
+      alert('Participant added to ladder!');
+      setShowAddParticipant(false);
+      setParticipantToAdd('');
+      await load();
+    } catch (err: any) {
+      alert(err.message || 'Failed to add participant.');
+    } finally {
+      setProcessingAdd(false);
     }
   }
 
@@ -423,19 +690,12 @@ export default function LadderView() {
         <ArrowLeft size={16} /> Back to Club
       </Link>
 
-      {/* ── Ladder title ── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: '0.2rem' }}>{ladder.name}</h1>
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <span style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>{SPORT_ICONS[ladder.sport]} {ladder.sport}</span>
-            <span style={{ 
-              fontSize: '0.82rem', 
-              fontWeight: 600, 
-              color: 'var(--text-light)',
-              textTransform: 'uppercase',
-              letterSpacing: '0.02em'
-            }}>
+            <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
               {isSingles ? '👤 Singles' : '👥 Doubles'}
             </span>
           </div>
@@ -444,15 +704,13 @@ export default function LadderView() {
         
         {isAdmin && (
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            {isSingles && (
-              <button
-                onClick={() => setShowInviteModal(true)}
-                className="btn flex items-center gap-2"
-                style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', backgroundColor: 'var(--primary-color)', color: 'white' }}
-              >
-                <UserPlus size={16} /> Invite Member
-              </button>
-            )}
+            <button
+              onClick={() => setShowAdminMatchModal(true)}
+              className="btn flex items-center gap-2"
+              style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', backgroundColor: 'var(--orange-accent)', color: 'white' }}
+            >
+              <Swords size={16} /> Admin Result
+            </button>
             <button
               onClick={handleTogglePrivacy}
               disabled={togglingPrivacy}
@@ -463,7 +721,6 @@ export default function LadderView() {
                 border: '1px solid', borderColor: ladder.is_private ? '#fca5a5' : '#86efac',
                 cursor: 'pointer'
               }}
-              title="Toggle privacy"
             >
               {ladder.is_private ? 'PRIVATE LADDER' : 'PUBLIC LADDER'}
             </button>
@@ -479,30 +736,30 @@ export default function LadderView() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
             {joinRequests.map(req => {
               const p = req.profiles;
-              const name = req.team_id ? req.teams?.name : ([p?.first_name, p?.last_name].filter(Boolean).join(' ') || 'Unknown user');
+              const name = req.team_id ? req.teams?.name : ([p?.first_name, p?.last_name].filter(Boolean).join(' ') || p?.nickname || 'Unknown user');
+              const isClubReq = req.source === 'club';
               return (
                 <div key={req.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', padding: '0.6rem 0', borderBottom: '1px solid #fde68a' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    {p?.avatar_url && !req.team_id
-                      ? <img src={p.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
-                      : <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#d1d5db', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '12px' }}>{req.team_id ? '👥' : ''}</div>
-                    }
                     <span style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{name}</span>
+                    {isClubReq && (
+                      <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#7c3aed', backgroundColor: '#ede9fe', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>Club Request</span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
                       className="btn"
-                      style={{ backgroundColor: '#059669', color: 'white', padding: '0.3rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      style={{ backgroundColor: '#059669', color: 'white', padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
                       disabled={processingReqId === req.id}
-                      onClick={() => handleRequest(req.id, true, req.player_id, req.team_id)}
+                      onClick={() => handleRequest(req.id, true, req.player_id, req.team_id ?? null, req.source)}
                     >
                       <CheckCircle size={14} /> Approve
                     </button>
                     <button
                       className="btn btn-outline"
-                      style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#dc2626' }}
                       disabled={processingReqId === req.id}
-                      onClick={() => handleRequest(req.id, false, req.player_id, req.team_id)}
+                      onClick={() => handleRequest(req.id, false, req.player_id, req.team_id ?? null, req.source)}
                     >
                       <XCircle size={14} /> Reject
                     </button>
@@ -514,25 +771,16 @@ export default function LadderView() {
         </div>
       )}
 
-      {/* ── Status bar: rank + team selector (mobile-first top row) ── */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', padding: '1rem 1.25rem' }}>
         {isSingles ? (
           alreadyJoined ? (
-            <span style={{ 
-              padding: '0.4rem 1rem', borderRadius: '8px', 
-              backgroundColor: 'rgba(34, 197, 94, 0.15)', 
-              color: 'var(--primary-color)', 
-              fontWeight: 800, fontSize: '1rem',
-              textShadow: '0 0 10px rgba(34, 197, 94, 0.5)',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              letterSpacing: '0.02em'
-            }}>
+            <span style={{ padding: '0.4rem 1rem', borderRadius: '8px', backgroundColor: 'rgba(34, 197, 94, 0.15)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '1rem', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
               ✅ RANK #{myRank}
             </span>
           ) : (
             <button
               className="btn"
-              style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white' }}
               onClick={joinSingles}
               disabled={joining || myPendingRequest}
             >
@@ -543,200 +791,217 @@ export default function LadderView() {
           <>
             {alreadyJoined && (
               <>
-                <span style={{ 
-                  padding: '0.4rem 1rem', borderRadius: '8px', 
-                  backgroundColor: 'rgba(34, 197, 94, 0.15)', 
-                  color: 'var(--primary-color)', 
-                  fontWeight: 800, fontSize: '1rem',
-                  textShadow: '0 0 10px rgba(34, 197, 94, 0.5)',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                  letterSpacing: '0.02em'
-                }}>
+                <span style={{ padding: '0.4rem 1rem', borderRadius: '8px', backgroundColor: 'rgba(34, 197, 94, 0.15)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '1rem', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
                   ✅ RANK #{myActiveRank}
                 </span>
                 {myTeamsInLadder.length > 1 && (
                   <select
                     value={activeTeamId}
                     onChange={e => setActiveTeamId(e.target.value)}
-                    style={{ padding: '0.35rem 0.6rem', border: '1px solid rgba(34,197,94,0.3)', backgroundColor: 'rgba(34,197,94,0.15)', color: 'var(--primary-color)', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }}
+                    style={{ padding: '0.35rem 0.6rem', border: '1px solid rgba(34,197,94,0.3)', backgroundColor: 'rgba(34,197,94,0.15)', color: 'var(--primary-color)', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600 }}
                   >
                     {myTeamsInLadder.map((mt: any) => (
                       <option key={mt.team_id} value={mt.team_id}>As {mt.teams?.name}</option>
                     ))}
                   </select>
                 )}
-                {myTeamsInLadder.length === 1 && (
-                  <span style={{ fontSize: '0.85rem', color: '#065f46', fontWeight: 600 }}>
-                    🤝 {activeTeamEntry?.teams?.name}
-                  </span>
-                )}
               </>
+            )}
+            {!alreadyJoined && (
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                <select
+                  value={selectedTeam}
+                  onChange={e => handleTeamSelectChange(e.target.value)}
+                  style={{ flex: 1, minWidth: '180px', padding: '0.45rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+                >
+                  <option value="">Select a team to join…</option>
+                  {availableTeamsForJoin.map((t: any) => (
+                    <option key={t.id} value={t.id}>{t.name || 'Unnamed Team'}</option>
+                  ))}
+                  <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
+                </select>
+                <button
+                  className="btn"
+                  style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white' }}
+                  onClick={joinDoubles}
+                  disabled={joining || !selectedTeam || myPendingRequest}
+                >
+                  <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Request to Join' : 'Join')}
+                </button>
+              </div>
             )}
           </>
         )}
-        {joinError && <p style={{ color: '#dc2626', fontSize: '0.8rem', margin: 0 }}>{joinError}</p>}
+        {joinError && <p style={{ color: '#dc2626', fontSize: '0.8rem', margin: 0, width: '100%' }}>{joinError}</p>}
       </div>
 
-      {/* ── Join / create team widget (doubles) ── */}
-      {!isSingles && (
-        <div className="card" style={{ padding: '1rem 1.25rem' }}>
-          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
-            <select
-              value={selectedTeam}
-              onChange={e => handleTeamSelectChange(e.target.value)}
-              style={{ flex: 1, minWidth: '180px', padding: '0.45rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
-            >
-              <option value="">Select a team to join…</option>
-              {availableTeamsForJoin.map((t: any) => (
-                <option key={t.id} value={t.id}>{t.name || 'Unnamed Team'}</option>
-              ))}
-              <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
-            </select>
-            <button
-              className="btn"
-              style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-              onClick={joinDoubles}
-              disabled={joining || !selectedTeam || myPendingRequest}
-            >
-              <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Request to Join' : 'Join')}
-            </button>
-          </div>
-
-          {/* Inline team creation form */}
-          {showCreateTeam && (
-            <form onSubmit={createTeam} style={{ marginTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: 'transparent' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-dark)' }}>Form a Doubles Team</span>
-                <button type="button" onClick={() => setShowCreateTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}><X size={16} /></button>
-              </div>
+      {!isSingles && showCreateTeam && (
+        <div className="card" style={{ padding: '1.25rem' }}>
+          <form onSubmit={createTeam} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-dark)' }}>Form a Doubles Team</span>
+              <button type="button" onClick={() => setShowCreateTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}><X size={16} /></button>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Team Name</label>
+              <input type="text" required value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="e.g. The Giants" className="input" style={{ width: '100%' }} />
+            </div>
+            {isAdmin && (
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Team Name</label>
-                <input
-                  type="text" required value={teamName} onChange={e => setTeamName(e.target.value)}
-                  placeholder="e.g. The Giants"
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Partner</label>
-                <select
-                  required value={partner} onChange={e => setPartner(e.target.value)}
-                  style={{ width: '100%', padding: '0.5rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
-                >
-                  <option value="">Select a club member…</option>
-                  {clubMembers.map((m: any) => {
-                    const p = m.profiles;
-                    const name = p?.nickname || p?.first_name || m.player_id.slice(0, 8);
-                    return <option key={m.player_id} value={m.player_id}>{name}</option>;
-                  })}
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Partner 1 (Admin override)</label>
+                <select required value={adminP1Id} onChange={e => setAdminP1Id(e.target.value)} className="input" style={{ width: '100%' }}>
+                  <option value="">Select first partner…</option>
+                  {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
+                  <option value={user?.id}>You ({user?.user_metadata?.name || 'Admin'})</option>
                 </select>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-                <button type="button" className="btn btn-outline" onClick={() => setShowCreateTeam(false)}>Cancel</button>
-                <button type="submit" className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }} disabled={creatingTeam}>
-                  {creatingTeam ? 'Creating…' : 'Create Team'}
-                </button>
-              </div>
-            </form>
-          )}
+            )}
+            <div>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Partner</label>
+              <select required value={partner} onChange={e => setPartner(e.target.value)} className="input" style={{ width: '100%' }}>
+                <option value="">Select a partner…</option>
+                {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
+              </select>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+              <button type="button" className="btn btn-outline" onClick={() => setShowCreateTeam(false)}>Cancel</button>
+              <button type="submit" className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }} disabled={creatingTeam}>{creatingTeam ? 'Creating…' : 'Create Team'}</button>
+            </div>
+          </form>
         </div>
       )}
 
-      {/* ── Standings ── */}
       <div className="card">
-        <h2 className="section-title" style={{ marginBottom: '1rem' }}>
+        <h2 className="section-title" style={{ marginBottom: '1.25rem' }}>
           <Trophy size={18} style={{ display: 'inline', marginRight: '0.4rem', color: '#f59e0b' }} />
           Standings
         </h2>
 
-        {entries.length === 0 ? (
+        {entries.length === 0 && pendingJoinRequests.length === 0 && pendingInvites.length === 0 ? (
           <p style={{ color: '#9ca3af', textAlign: 'center', padding: '1.5rem' }}>No one has joined yet. Be the first!</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
             {entries.map((entry: any, i: number) => {
-              const isMe = isSingles
-                ? entry.player_id === user?.id
-                : (entry.teams?.player1_id === user?.id || entry.teams?.player2_id === user?.id);
-
-              const displayName = isSingles
-                ? (entry.profiles?.nickname || entry.profiles?.first_name || '—')
-                : (entry.teams?.name || 'Unnamed Team');
-
-              const subText = isSingles
-                ? `${entry.wins}W – ${entry.losses}L · ELO: ${entry.elo_rating ?? 800}`
-                : (() => {
-                    const p1 = entry.teams?.profiles_player1?.nickname || entry.teams?.profiles_player1?.first_name || '?';
-                    const p2 = entry.teams?.profiles_player2?.nickname || entry.teams?.profiles_player2?.first_name || '?';
-                    const p1dElo = ladderPlayersMap.get(entry.teams?.player1_id) ?? 800;
-                    const p2dElo = ladderPlayersMap.get(entry.teams?.player2_id) ?? 800;
-                    return `${p1} (${p1dElo}) & ${p2} (${p2dElo}) · ${entry.wins}W – ${entry.losses}L`;
-                  })();
-
+              const isMe = isSingles ? entry.player_id === user?.id : (entry.teams?.player1_id === user?.id || entry.teams?.player2_id === user?.id);
+              const displayName = isSingles ? (entry.profiles?.nickname || entry.profiles?.first_name || '—') : (entry.teams?.name || 'Unnamed Team');
+              const subText = isSingles ? `${entry.wins}W – ${entry.losses}L · ELO: ${entry.elo_rating ?? 800}` : `${entry.wins}W – ${entry.losses}L · Team ELO: ${entry.elo_rating ?? 800}`;
               const rank = entry.display_rank;
               const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
-
-              // Allow challenging up to 2 above and 2 below
-              const canChallenge =
-                !isMe &&
-                alreadyJoined &&
-                myActiveRank !== null &&
-                Math.abs(rank - myActiveRank) <= 2 &&
-                rank !== myActiveRank;
-
-              const hasActiveMatch = myMatches.some(m =>
-                (isSingles && (m.challenger_id === entry.player_id || m.defender_id === entry.player_id)) ||
-                (!isSingles && (m.challenger_team_id === entry.team_id || m.defender_team_id === entry.team_id))
-              );
+              const canChallenge = !isMe && alreadyJoined && myActiveRank !== null && Math.abs(rank - myActiveRank) <= 2;
+              const hasActiveMatch = myMatches.some(m => (isSingles && (m.challenger_id === entry.player_id || m.defender_id === entry.player_id)) || (!isSingles && (m.challenger_team_id === entry.team_id || m.defender_team_id === entry.team_id)));
+              const hasBorder = (i < entries.length - 1) || pendingJoinRequests.length > 0 || pendingInvites.length > 0;
 
               return (
-                <div
-                  key={entry.id}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.75rem',
-                    padding: '0.75rem 0.5rem',
-                    backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent',
-                    borderBottom: i < entries.length - 1 ? '1px solid rgba(51, 65, 85, 0.5)' : 'none',
-                    borderRadius: '6px',
-                  }}
-                >
-                  <span style={{ minWidth: '2rem', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-dark)', textAlign: 'center' }}>
-                    {medal || `#${rank}`}
-                  </span>
+                <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0.5rem', backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent', borderBottom: hasBorder ? '1px solid var(--border-color)' : 'none', borderRadius: '6px' }}>
+                  <span style={{ minWidth: '2.5rem', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-dark)', textAlign: 'center' }}>{medal || `#${rank}`}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--primary-color)' : 'var(--text-dark)' }}>
-                      {displayName} {isMe ? '(you)' : ''}
-                    </div>
-                    <div style={{ fontSize: '0.8rem', color: '#9ca3af' }}>{subText}</div>
+                    <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--primary-color)' : 'var(--text-dark)' }}>{displayName} {isMe ? '(you)' : ''}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>{subText}</div>
                   </div>
-                  {/* ELO badge for doubles */}
-                  {!isSingles && (
-                    <span className="badge-neon-orange" style={{ whiteSpace: 'nowrap' }}>
-                      Team ELO: {entry.elo_rating ?? 800}
-                    </span>
-                  )}
-                  {canChallenge && (
-                    <button
-                      onClick={() => {
-                        if (!hasActiveMatch) {
-                          setChallengeTarget(entry);
-                          setChallengeErr('');
-                          if (!isSingles) {
-                            setChallengeWithTeamId(activeTeamId || myTeamsInLadder[0]?.team_id);
-                          }
-                        }
-                      }}
-                      disabled={hasActiveMatch}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: '0.3rem',
-                        padding: '0.3rem 0.75rem', borderRadius: '6px', fontSize: '0.8rem',
-                        backgroundColor: hasActiveMatch ? 'rgba(51, 65, 85, 0.5)' : 'rgba(249, 115, 22, 0.1)',
-                        color: hasActiveMatch ? '#9ca3af' : '#fb923c',
-                        border: '1px solid ' + (hasActiveMatch ? 'rgba(51, 65, 85, 0.8)' : '#fb923c'),
-                        cursor: hasActiveMatch ? 'default' : 'pointer', fontWeight: 600, whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <Swords size={13} /> {hasActiveMatch ? 'Active' : 'Challenge'}
-                    </button>
+                  <div style={{ display: 'flex', gap: '0.4rem' }}>
+                    {canChallenge && (
+                      <button onClick={() => { setChallengeTarget(entry); setChallengeErr(''); if (!isSingles) setChallengeWithTeamId(activeTeamId || myTeamsInLadder[0]?.team_id); }} disabled={hasActiveMatch} className="btn" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, backgroundColor: hasActiveMatch ? '#cbd5e1' : '#fef3c7', color: hasActiveMatch ? '#64748b' : '#92400e', border: '1px solid' + (hasActiveMatch ? '#94a3b8' : '#f59e0b') }}>
+                        <Swords size={12} /> {hasActiveMatch ? 'Active' : 'Challenge'}
+                      </button>
+                    )}
+                    {alreadyJoined && !isMe && (
+                      <button onClick={() => { setQuickRecordTarget(entry); setQrErr(''); }} className="btn" style={{ padding: '0.35rem 0.75rem', fontSize: '0.75rem', fontWeight: 700, backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--primary-color)', border: '1px solid var(--primary-color)' }}>
+                         Record
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            {pendingJoinRequests.map((req, i) => {
+              const p = req.profiles;
+              const name = req.team_id ? req.teams?.name : ([p?.first_name, p?.last_name].filter(Boolean).join(' ') || p?.nickname || 'Unknown user');
+              const hasBorder = (i < pendingJoinRequests.length - 1) || pendingInvites.length > 0;
+              return (
+                <div key={req.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0.5rem', backgroundColor: 'transparent', borderBottom: hasBorder ? '1px solid var(--border-color)' : 'none', borderRadius: '6px', opacity: 0.7 }}>
+                  <span style={{ minWidth: '2.5rem', fontWeight: 700, fontSize: '0.8rem', color: '#f59e0b', textAlign: 'center', backgroundColor: '#fef3c7', padding: '0.2rem 0', borderRadius: '4px' }}>PEND</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{name}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>Waiting for admin approval</div>
+                  </div>
+                </div>
+              );
+            })}
+            {pendingInvites.map((inv, i) => {
+                const hasBorder = (i < pendingInvites.length - 1);
+                return (
+                  <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0.5rem', backgroundColor: 'transparent', borderBottom: hasBorder ? '1px solid var(--border-color)' : 'none', borderRadius: '6px', opacity: 0.7 }}>
+                    <span style={{ minWidth: '2.5rem', fontWeight: 700, fontSize: '0.8rem', color: '#8b5cf6', textAlign: 'center', backgroundColor: '#ede9fe', padding: '0.2rem 0', borderRadius: '4px' }}>INV</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{inv.name || inv.email}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>Invited to join</div>
+                    </div>
+                  </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!loading && (
+          <div style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+            {alreadyJoined && (
+              <div style={{ marginTop: '1.25rem' }}>
+                {!showAddParticipant ? (
+                  <button onClick={() => setShowAddParticipant(true)} className="btn btn-outline" style={{ width: '100%', borderStyle: 'dashed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
+                    <UserPlus size={16} /> Add {isSingles ? 'Player' : 'Team'} to Bottom
+                  </button>
+                ) : (
+                  <div style={{ backgroundColor: 'var(--bg-light)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                      <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 700 }}>Add to Ladder Standing</h4>
+                      <button onClick={() => setShowAddParticipant(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}><X size={16} /></button>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {isSingles ? (
+                        <select className="input" value={participantToAdd} onChange={(e) => setParticipantToAdd(e.target.value)} style={{ width: '100%' }}>
+                          <option value="">Select a member...</option>
+                          {clubMembers.filter(m => !entries.some(e => e.player_id === m.player_id)).map(m => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
+                        </select>
+                      ) : (
+                        <select className="input" value={participantToAdd} onChange={(e) => { if (e.target.value === CREATE_TEAM_VALUE) { setShowCreateTeam(true); setParticipantToAdd(''); } else { setParticipantToAdd(e.target.value); } }} style={{ width: '100%' }}>
+                          <option value="">Select an existing team...</option>
+                          {allClubTeams?.filter(t => !entries.some(e => e.team_id === t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                          <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
+                        </select>
+                      )}
+                      <button onClick={handleAddParticipant} disabled={!participantToAdd || processingAdd} className="btn" style={{ width: '100%' }}>{processingAdd ? 'Adding...' : `Add to Bottom`}</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 className="section-title" style={{ marginBottom: 0 }}>Recent Matches</h2>
+        </div>
+        {recentMatches.length === 0 ? (
+          <p style={{ textAlign: 'center', color: 'var(--text-light)', padding: '1.5rem' }}>No matches yet.</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {recentMatches.map(m => {
+              const challengerName = isSingles ? (m.challenger?.nickname || m.challenger?.first_name) : m.challenger_team?.name;
+              const defenderName = isSingles ? (m.defender?.nickname || m.defender?.first_name) : m.defender_team?.name;
+              return (
+                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.65rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.85rem' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: 600 }}>{challengerName}</span>
+                      <span style={{ color: '#9ca3af' }}>vs</span>
+                      <span style={{ fontWeight: 600 }}>{defenderName}</span>
+                      {m.score_text && <span style={{ marginLeft: 'auto', fontWeight: 800, color: 'var(--primary-color)' }}>{m.score_text}</span>}
+                    </div>
+                  </div>
+                  {isAdmin && (
+                    <button onClick={() => handleDeleteLadderMatch(m.id)} disabled={deletingMatchId === m.id} style={{ marginLeft: '0.5rem', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><X size={14} /></button>
                   )}
                 </div>
               );
@@ -745,107 +1010,89 @@ export default function LadderView() {
         )}
       </div>
 
-      {/* Challenge Confirmation Modal */}
       {challengeTarget && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '1rem' }}>
-          <div className="card" style={{ width: '100%', maxWidth: '420px', position: 'relative' }}>
-            <button onClick={() => setChallengeTarget(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
-              <X size={20} />
-            </button>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.75rem' }}>
-              <Swords size={22} color="#c2410c" />
-              <h2 style={{ fontWeight: 700, fontSize: '1.15rem', color: 'var(--text-dark)' }}>Send Challenge</h2>
-            </div>
-            <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
-              You are challenging{' '}
-              <strong style={{ color: 'var(--text-dark)' }}>
-                {isSingles
-                  ? (challengeTarget.profiles?.nickname || challengeTarget.profiles?.first_name)
-                  : (challengeTarget.teams?.name || 'this team')}
-              </strong>{' '}
-              (rank #{challengeTarget.display_rank}) in <strong>{ladder.name}</strong>.
-            </p>
-            {!isSingles && myTeamsInLadder.length > 1 && (
-              <div style={{ marginBottom: '1.25rem' }}>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.35rem' }}>Challenge As Team</label>
-                <select
-                  value={challengeWithTeamId}
-                  onChange={e => setChallengeWithTeamId(e.target.value)}
-                  style={{ width: '100%', padding: '0.55rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
-                >
-                  {myTeamsInLadder.map((mt: any) => (
-                    <option key={mt.team_id} value={mt.team_id}>{mt.teams?.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {challengeErr && <p style={{ color: '#dc2626', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{challengeErr}</p>}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button className="btn btn-outline" onClick={() => setChallengeTarget(null)}>Cancel</button>
-              <button
-                className="btn"
-                style={{ backgroundColor: '#ea580c', color: 'white', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                disabled={submittingChallenge}
-                onClick={submitChallenge}
-              >
-                <CheckCircle size={15} /> {submittingChallenge ? 'Sending…' : 'Send Challenge'}
-              </button>
-            </div>
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+             <button onClick={() => setChallengeTarget(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+             <h3 style={{ marginBottom: '1rem' }}>Send Challenge</h3>
+             <p style={{ fontSize: '0.9rem', marginBottom: '1rem' }}>Challenge {isSingles ? challengeTarget.profiles?.nickname : challengeTarget.teams?.name}?</p>
+             {challengeErr && <p style={{ color: 'red', fontSize: '0.8rem' }}>{challengeErr}</p>}
+             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                <button className="btn btn-outline" onClick={() => setChallengeTarget(null)}>Cancel</button>
+                <button className="btn" onClick={submitChallenge} disabled={submittingChallenge}>{submittingChallenge ? 'Sending...' : 'Challenge'}</button>
+             </div>
           </div>
         </div>
       )}
-      {/* Invite Modal */}
-      {showInviteModal && (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+
+      {quickRecordTarget && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '1rem' }}>
           <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
-            <button onClick={() => setShowInviteModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
-              <X size={22} />
-            </button>
-            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-dark)' }}>Invite to Ladder</h2>
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
-              The player will be added to this ladder automatically when they log in with this Gmail address.
-            </p>
+             <button onClick={() => setQuickRecordTarget(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+             <h3 style={{ marginBottom: '1rem' }}>Record Match</h3>
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                   <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Winner</label>
+                   <select className="input" style={{ width: '100%' }} value={qrWinnerId} onChange={e => setQrWinnerId(e.target.value)}>
+                      <option value="">Select winner...</option>
+                      <option value={isSingles ? user?.id : (activeTeamId || myTeamsInLadder[0]?.team_id)}>Me</option>
+                      <option value={isSingles ? quickRecordTarget.player_id : quickRecordTarget.team_id}>{isSingles ? quickRecordTarget.profiles?.nickname : quickRecordTarget.teams?.name}</option>
+                   </select>
+                </div>
+                <div>
+                   <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Score</label>
+                   <input className="input" style={{ width: '100%' }} value={qrScoreText} onChange={e => setQrScoreText(e.target.value)} placeholder="e.g. 21-15, 21-18" />
+                </div>
+                {qrErr && <p style={{ color: 'red', fontSize: '0.8rem' }}>{qrErr}</p>}
+             </div>
+             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1.25rem' }}>
+                <button className="btn btn-outline" onClick={() => setQuickRecordTarget(null)}>Cancel</button>
+                <button className="btn" onClick={submitQuickRecord} disabled={submittingQuickRecord}>{submittingQuickRecord ? 'Submitting...' : 'Submit Result'}</button>
+             </div>
+          </div>
+        </div>
+      )}
+
+      {showInviteModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px' }}>
+            <h3 style={{ marginBottom: '1rem' }}>Invite to Ladder</h3>
             <form onSubmit={handleInviteToLadder} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Gmail Address</label>
-                <input 
-                  type="email" 
-                  required 
-                  value={inviteEmail} 
-                  onChange={e => setInviteEmail(e.target.value)} 
-                  placeholder="e.g. user@gmail.com" 
-                  style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }} 
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Name</label>
-                <input 
-                  type="text" 
-                  required 
-                  value={inviteName} 
-                  onChange={e => setInviteName(e.target.value)} 
-                  placeholder="e.g. John Doe" 
-                  style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }} 
-                />
-              </div>
-              <div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-dark)', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={sendEmail}
-                    onChange={e => setSendEmail(e.target.checked)}
-                    style={{ transform: 'scale(1.1)', cursor: 'pointer' }}
-                  />
-                  Send invitation email notification via Resend
-                </label>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button type="button" className="btn btn-outline" onClick={() => setShowInviteModal(false)}>Cancel</button>
-                <button type="submit" className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }} disabled={inviting}>
-                  {inviting ? 'Sending...' : 'Invite Player'}
-                </button>
-              </div>
+               <input className="input" type="email" placeholder="Gmail Address" required value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+               <input className="input" type="text" placeholder="Name" required value={inviteName} onChange={e => setInviteName(e.target.value)} />
+               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                  <button type="button" className="btn btn-outline" onClick={() => setShowInviteModal(false)}>Cancel</button>
+                  <button type="submit" className="btn" disabled={inviting}>{inviting ? 'Inviting...' : 'Invite'}</button>
+               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {showAdminMatchModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 110 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '420px' }}>
+            <h3 style={{ marginBottom: '1.25rem' }}>Record Admin Result</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+               <select className="input" value={adminP1Id} onChange={e => setAdminP1Id(e.target.value)}>
+                  <option value="">Challenger...</option>
+                  {entries.map(e => <option key={isSingles ? e.player_id : e.team_id} value={isSingles ? e.player_id : e.team_id}>{isSingles ? e.profiles?.nickname : e.teams?.name}</option>)}
+               </select>
+               <select className="input" value={adminP2Id} onChange={e => setAdminP2Id(e.target.value)}>
+                  <option value="">Defender...</option>
+                  {entries.map(e => <option key={isSingles ? e.player_id : e.team_id} value={isSingles ? e.player_id : e.team_id}>{isSingles ? e.profiles?.nickname : e.teams?.name}</option>)}
+               </select>
+               <select className="input" value={adminWinnerId} onChange={e => setAdminWinnerId(e.target.value)}>
+                  <option value="">Winner...</option>
+                  {adminP1Id && <option value={adminP1Id}>Participant 1</option>}
+                  {adminP2Id && <option value={adminP2Id}>Participant 2</option>}
+               </select>
+               <input className="input" placeholder="Score text" value={adminScore} onChange={e => setAdminScore(e.target.value)} />
+               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
+                  <button className="btn btn-outline" onClick={() => setShowAdminMatchModal(false)}>Cancel</button>
+                  <button className="btn" onClick={submitAdminMatch} disabled={submittingAdminMatch}>{submittingAdminMatch ? 'Recording...' : 'Record'}</button>
+               </div>
+            </div>
           </div>
         </div>
       )}

@@ -57,6 +57,27 @@ export default function Rules() {
         </p>
       </div>
 
+      <div className="card">
+        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-dark)', marginBottom: '1rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
+          <Shield size={20} color="#818cf8" />
+          ELO Calculation
+        </h2>
+        <div style={{ color: 'var(--text-dark)', lineHeight: 1.6, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div>
+            <strong>Singles Matches:</strong><br />
+            Singles ELO uses a standard calculation with a K-factor of 32. When you finish a singles match, your personal <strong>Singles ELO</strong> is updated based on your rating compared to your opponent.
+          </div>
+          <div>
+            <strong>Doubles Matches (Team Rating):</strong><br />
+            For doubles ladders, each unique pair of players forms a <strong>Team</strong>. The Team maintains its own independent ELO rating. When the team plays a match, the Team ELO is updated using the standard K-factor of 32 against the opposing team's ELO.
+          </div>
+          <div>
+            <strong>Doubles Matches (Individual Rating):</strong><br />
+            Every time you play a doubles match, your personal <strong>Doubles ELO</strong> is also updated dynamically. This score reflects your overall effectiveness as a doubles player, regardless of who your partner is.
+          </div>
+        </div>
+      </div>
+
       <div style={{ padding: '2rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.9rem' }}>
         <BookOpen size={24} style={{ margin: '0 auto 0.5rem', display: 'block', opacity: 0.5 }} />
         Get out there and climb that ladder!

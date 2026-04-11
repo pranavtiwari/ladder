@@ -401,7 +401,18 @@ export default function Dashboard() {
 
             {/* Score confirmations */}
             {confirmations.map(match => {
-              const submitterName = match.score_submitted_by === match.challenger_id ? displayName(match.challenger) : displayName(match.defender);
+              const ladder = match.ladders;
+              const isSingles = ladder?.type === 'singles';
+              
+              let submitterName = '';
+              if (isSingles) {
+                submitterName = match.score_submitted_by === match.challenger_id ? displayName(match.challenger) : displayName(match.defender);
+              } else {
+                submitterName = match.score_submitted_by === match.challenger_id || 
+                               (match.challenger_team && (match.challenger_team.player1_id === match.score_submitted_by || match.challenger_team.player2_id === match.score_submitted_by))
+                               ? (match.challenger_team?.name || 'Challenger Team')
+                               : (match.defender_team?.name || 'Defender Team');
+              }
               
               return (
                 <div key={match.id} style={{ padding: '0.85rem 1rem', backgroundColor: '#ecfdf5', borderRadius: 'var(--radius-md)', border: '1px solid #a7f3d0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
@@ -410,7 +421,7 @@ export default function Dashboard() {
                     <div>
                       <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>Confirm Score</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
-                        <strong>{submitterName}</strong> recorded <strong>{match.score_text}</strong>.
+                        <strong>{submitterName}</strong> recorded <strong>{match.score_text}</strong> in <strong>{ladder?.name}</strong>.
                       </div>
                     </div>
                   </div>

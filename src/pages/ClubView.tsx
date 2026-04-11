@@ -60,6 +60,11 @@ export default function ClubView() {
   // Privacy
   const [togglingPrivacy, setTogglingPrivacy] = useState(false);
 
+  // Add Pending to Ladder
+  const [showLadderSelect, setShowLadderSelect] = useState(false);
+  const [ladderTarget, setLadderTarget] = useState<{ id?: string, email?: string, name?: string, type: 'request' | 'invite', reqId?: string } | null>(null);
+  const [processingLadderAdd, setProcessingLadderAdd] = useState(false);
+
   useEffect(() => {
     if (id && user) loadClub();
   }, [id, user]);
@@ -77,9 +82,9 @@ export default function ClubView() {
       const myMembership = data?.club_members?.find((m: any) => m.player_id === user?.id);
       const admin = myMembership?.role === 'admin';
       setIsAdmin(admin);
-      if (admin) {
-        loadJoinRequests();
-        loadPendingInvitations();
+      if (myMembership || admin) {
+        if (admin) await loadJoinRequests();
+        await loadPendingInvitations();
       }
       loadLadders();
     } catch (err) {
@@ -135,13 +140,48 @@ export default function ClubView() {
 
   async function loadPendingInvitations() {
     try {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('member_invitations')
         .select('*')
         .eq('club_id', id);
+      if (error) throw error;
       setPendingInvites(data || []);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error loading invitations:', err);
+    }
+  }
+
+  async function handleLadderAssignment(ladderId: string) {
+    if (!ladderTarget) return;
+    setProcessingLadderAdd(true);
+    try {
+      if (ladderTarget.type === 'request') {
+        const { error: inviteErr } = await supabase
+          .from('club_join_requests')
+          .update({ ladder_id: ladderId })
+          .eq('id', ladderTarget.reqId);
+        if (inviteErr) throw inviteErr;
+        
+        await loadJoinRequests();
+      } else {
+        // It's an invite
+        const { error: inviteErr } = await supabase
+          .from('member_invitations')
+          .update({ ladder_id: ladderId })
+          .eq('id', ladderTarget.reqId); // reqId is the invitation id here
+        if (inviteErr) throw inviteErr;
+        
+        await loadPendingInvitations();
+      }
+
+      alert('Successfully assigned to ladder!');
+      setShowLadderSelect(false);
+      setLadderTarget(null);
+      await loadClub();
+    } catch (err: any) {
+      alert(err.message || 'Failed to assign ladder.');
+    } finally {
+      setProcessingLadderAdd(false);
     }
   }
 
@@ -163,12 +203,18 @@ export default function ClubView() {
       } else {
         if (sendEmail) {
           const inviterName = user?.user_metadata?.name || 'A club admin';
-          await supabase.functions.invoke('send-invitation-email', {
-            body: { email: inviteEmail.trim(), name: inviteName.trim(), clubName: club?.name, inviterName }
-          });
+          try {
+            const { error: fnError } = await supabase.functions.invoke('send-invitation-email', {
+              body: { email: inviteEmail.trim(), name: inviteName.trim(), clubName: club?.name, inviterName }
+            });
+            if (fnError) throw fnError;
+          } catch (fnErr: any) {
+            console.error('Email error:', fnErr);
+            // Don't throw, just let the invitation succeed
+          }
         }
-        alert(`Invitation sent to ${inviteEmail}. They will join automatically when they log in.`);
-        loadPendingInvitations();
+        alert(`Invitation sent to ${inviteEmail}.`);
+        await loadPendingInvitations();
       }
       
       setShowAddMember(false);
@@ -407,6 +453,25 @@ export default function ClubView() {
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     <button
+                      className="btn btn-outline"
+                      style={{ 
+                        padding: '0.3rem 0.6rem', fontSize: '0.7rem', color: 'var(--primary-color)',
+                        borderColor: 'var(--primary-color)', backgroundColor: 'transparent'
+                      }}
+                      disabled={processingReq === req.id}
+                      onClick={() => {
+                        setLadderTarget({ id: req.player_id, name: name, type: 'request', reqId: req.id });
+                        setShowLadderSelect(true);
+                      }}
+                    >
+                      {req.ladder_id ? 'Change Ladder' : 'Add to Ladder'}
+                    </button>
+                    {req.ladder_id && (
+                      <span style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                        Assigned: {ladders.find(l => l.id === req.ladder_id)?.name}
+                      </span>
+                    )}
+                    <button
                       className="btn"
                       style={{ backgroundColor: '#059669', color: 'white', padding: '0.3rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
                       disabled={processingReq === req.id}
@@ -469,29 +534,57 @@ export default function ClubView() {
         </div>
         
         {/* Pending Invitations Section */}
-        {isAdmin && pendingInvites.length > 0 && (
-          <div style={{ marginBottom: '1.5rem', backgroundColor: 'rgba(59, 130, 246, 0.05)', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid var(--accent-color)' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '0.75rem' }}>Pending Invitations ({pendingInvites.length})</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {pendingInvites.map(inv => (
-                <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                  <div style={{ color: 'var(--text-dark)' }}>
-                    <span style={{ fontWeight: 600 }}>{inv.name}</span> 
-                    <span style={{ color: 'var(--text-light)', marginLeft: '0.5rem' }}>({inv.email})</span>
-                  </div>
-                  <button 
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {/* Invited Members (Show at top for visibility) */}
+          {pendingInvites.map(inv => (
+            <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderRadius: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.5rem' }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✉️</div>
+                <div>
+                  <div style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{inv.name} (Invited)</div>
+                  <div style={{ color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.2rem' }}>{inv.email}</div>
+                  {inv.ladder_id && (
+                    <div style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 700 }}>
+                      ✓ INVITED TO LADDER
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '0.5rem' }}>
+                {!inv.ladder_id && isAdmin && (
+                  <button
+                    onClick={() => {
+                      setLadderTarget({ email: inv.email, name: inv.name, type: 'invite', reqId: inv.id });
+                      setShowLadderSelect(true);
+                    }}
+                    className="btn btn-outline"
+                    style={{ padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}
+                  >
+                    Add to Ladder
+                  </button>
+                )}
+                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-color)', border: '1px solid var(--accent-color)', padding: '0.1rem 0.4rem', borderRadius: '4px', textTransform: 'uppercase' }}>
+                  Pending
+                </span>
+                {isAdmin && (
+                  <button
                     onClick={() => cancelInvitation(inv.id)}
-                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.75rem' }}
+                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
                   >
                     Cancel
                   </button>
-                </div>
-              ))}
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          ))}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          {isAdmin && pendingInvites.length === 0 && (
+            <p style={{ fontSize: '0.85rem', color: '#9ca3af', fontStyle: 'italic', textAlign: 'center', margin: '0.5rem 0' }}>No pending invitations.</p>
+          )}
+
+          <div style={{ height: pendingInvites.length > 0 ? '0.5rem' : 0 }}></div>
+
+          {/* Active Members */}
           {club.club_members?.map((m: any) => {
             const p = m.profiles;
             const displayName = p?.nickname || p?.first_name || (m.player_id === user?.id ? 'You' : m.player_id.slice(0, 8) + '…');
@@ -796,6 +889,59 @@ export default function ClubView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Ladder Selection Modal */}
+      {showLadderSelect && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '440px', position: 'relative' }}>
+            <button onClick={() => setShowLadderSelect(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
+              <X size={22} />
+            </button>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-dark)' }}>Add to Ladder</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
+              Assign <strong>{ladderTarget?.name}</strong> to a ladder in this club.
+            </p>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto', paddingRight: '0.5rem' }}>
+              {ladders.filter(l => l.type === 'singles').length === 0 ? (
+                <p style={{ textAlign: 'center', color: 'var(--text-light)', padding: '1rem' }}>No singles ladders available.</p>
+              ) : (
+                ladders.filter(l => l.type === 'singles').map(l => (
+                  <button
+                    key={l.id}
+                    onClick={() => handleLadderAssignment(l.id)}
+                    disabled={processingLadderAdd}
+                    className="btn btn-outline"
+                    style={{ 
+                      justifyContent: 'flex-start', 
+                      textAlign: 'left', 
+                      padding: '0.8rem 1rem', 
+                      borderColor: 'var(--border-color)',
+                      backgroundColor: 'rgba(255, 255, 255, 0.03)'
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{l.name}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{SPORT_ICONS[l.sport]} {l.sport}</div>
+                  </button>
+                ))
+              )}
+            </div>
+            
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-light)', marginTop: '0.75rem', fontStyle: 'italic' }}>
+              Note: Doubles ladder assignments are managed via team formation in the ladder view.
+            </p>
+
+            <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-outline" onClick={() => setShowLadderSelect(false)}>Cancel</button>
+            </div>
+            
+            {processingLadderAdd && (
+              <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 'var(--radius-lg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem', color: 'white', fontWeight: 600 }}>
+                Processing...
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -175,7 +175,7 @@ export default function Layout() {
               fontSize: '0.85rem', 
               borderRadius: '6px',
               cursor: 'pointer',
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
+              backgroundColor: 'var(--surface-color)',
               border: '1px solid var(--border-color)',
               color: 'var(--text-dark)'
             }}

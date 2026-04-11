@@ -8,6 +8,8 @@ export default function MatchHistory() {
   const [matches, setMatches] = useState<any[]>([]);
   const [myTeamIds, setMyTeamIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [adminClubs, setAdminClubs] = useState<string[]>([]);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
 
   // Score recording modal state
   const [recordingMatch, setRecordingMatch] = useState<any>(null);
@@ -16,8 +18,20 @@ export default function MatchHistory() {
   const [submittingScore, setSubmittingScore] = useState(false);
 
   useEffect(() => {
-    if (user) loadMatches();
+    if (user) {
+      loadMatches();
+      loadAdminClubs();
+    }
   }, [user]);
+
+  async function loadAdminClubs() {
+    const { data } = await supabase
+      .from('club_members')
+      .select('club_id')
+      .eq('player_id', user?.id)
+      .eq('role', 'admin');
+    setAdminClubs(data?.map(c => c.club_id) || []);
+  }
 
   async function loadMatches() {
     setLoading(true);
@@ -120,6 +134,20 @@ export default function MatchHistory() {
     setRecordingMatch(match);
     setScoreText('');
     setWinnerId('');
+  }
+
+  async function handleDeleteMatch(match: any) {
+    if (!window.confirm('Are you sure you want to delete this match record? This will remove the win/loss entry for the participants.')) return;
+    setIsDeleting(match.id);
+    try {
+      const { error } = await supabase.from('matches').delete().eq('id', match.id);
+      if (error) throw error;
+      setMatches(prev => prev.filter(m => m.id !== match.id));
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete match.');
+    } finally {
+      setIsDeleting(null);
+    }
   }
 
   return (
@@ -225,6 +253,20 @@ export default function MatchHistory() {
                         <XCircle size={13} /> Dispute
                       </button>
                     </div>
+                  )}
+                  {adminClubs.includes(match.ladders?.club_id) && (
+                    <button
+                      onClick={() => handleDeleteMatch(match)}
+                      disabled={isDeleting === match.id}
+                      style={{ 
+                        background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', 
+                        padding: '0.4rem', borderRadius: '4px', display: 'flex', alignItems: 'center',
+                        backgroundColor: 'rgba(239, 68, 68, 0.1)'
+                      }}
+                      title="Delete Match"
+                    >
+                      <X size={16} />
+                    </button>
                   )}
                 </div>
               </div>
