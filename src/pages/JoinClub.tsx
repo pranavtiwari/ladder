@@ -25,7 +25,7 @@ export default function JoinClub() {
     setLoading(true);
     try {
       const [clubsRes, memberRes, requestRes] = await Promise.all([
-        supabase.from('clubs').select('id, name, description, sports').order('name'),
+        supabase.from('clubs').select('id, name, description, sports').eq('is_private', false).order('name'),
         supabase.from('club_members').select('club_id').eq('player_id', user?.id),
         supabase.from('club_join_requests').select('club_id, status').eq('player_id', user?.id),
       ]);

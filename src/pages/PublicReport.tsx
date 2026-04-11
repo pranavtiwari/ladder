@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Trophy, Share2, Download, AlertCircle } from 'lucide-react';
+import { Share2, Download, AlertCircle } from 'lucide-react';
 
 interface MatchReport {
   id: string;

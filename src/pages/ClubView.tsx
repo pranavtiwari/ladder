@@ -46,6 +46,20 @@ export default function ClubView() {
   const [newLadderRules, setNewLadderRules] = useState('');
   const [creatingLadder, setCreatingLadder] = useState(false);
 
+  // Invitations
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [sendEmail, setSendEmail] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+
+  // Deactivate
+  const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
+
+  // Privacy
+  const [togglingPrivacy, setTogglingPrivacy] = useState(false);
+
   useEffect(() => {
     if (id && user) loadClub();
   }, [id, user]);
@@ -55,7 +69,7 @@ export default function ClubView() {
     try {
       const { data, error } = await supabase
         .from('clubs')
-        .select(`*, club_members(player_id, role, profiles(nickname, first_name, last_name, avatar_url))`)
+        .select(`*, club_members(player_id, role, status, profiles(nickname, first_name, last_name, avatar_url))`)
         .eq('id', id)
         .single();
       if (error) throw error;
@@ -63,7 +77,10 @@ export default function ClubView() {
       const myMembership = data?.club_members?.find((m: any) => m.player_id === user?.id);
       const admin = myMembership?.role === 'admin';
       setIsAdmin(admin);
-      if (admin) loadJoinRequests();
+      if (admin) {
+        loadJoinRequests();
+        loadPendingInvitations();
+      }
       loadLadders();
     } catch (err) {
       console.error('Error loading club:', err);
@@ -114,6 +131,98 @@ export default function ClubView() {
       .eq('club_id', id)
       .order('name');
     setLadders(data || []);
+  }
+
+  async function loadPendingInvitations() {
+    try {
+      const { data } = await supabase
+        .from('member_invitations')
+        .select('*')
+        .eq('club_id', id);
+      setPendingInvites(data || []);
+    } catch (err) {
+      console.error('Error loading invitations:', err);
+    }
+  }
+
+  async function handleInviteMember(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail || !inviteName) return;
+    setInviting(true);
+    try {
+      const { data, error } = await supabase.rpc('send_member_invitation', {
+        p_email: inviteEmail.trim(),
+        p_name: inviteName.trim(),
+        p_club_id: id
+      });
+      if (error) throw error;
+      
+      if (data === 'added') {
+        alert(`${inviteName} is already a user! They have been added to the club immediately.`);
+        loadClub();
+      } else {
+        if (sendEmail) {
+          const inviterName = user?.user_metadata?.name || 'A club admin';
+          await supabase.functions.invoke('send-invitation-email', {
+            body: { email: inviteEmail.trim(), name: inviteName.trim(), clubName: club?.name, inviterName }
+          });
+        }
+        alert(`Invitation sent to ${inviteEmail}. They will join automatically when they log in.`);
+        loadPendingInvitations();
+      }
+      
+      setShowAddMember(false);
+      setInviteEmail('');
+      setInviteName('');
+      setSendEmail(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to send invitation.');
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function handleToggleMemberStatus(playerId: string, currentStatus: string) {
+    setTogglingStatusId(playerId);
+    try {
+      const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
+      const { error } = await supabase.from('club_members').update({ status: newStatus }).eq('club_id', id).eq('player_id', playerId);
+      if (error) throw error;
+      
+      setClub((prev: any) => ({
+        ...prev,
+        club_members: prev.club_members.map((m: any) => m.player_id === playerId ? { ...m, status: newStatus } : m)
+      }));
+    } catch (err: any) {
+      alert(err.message || 'Failed to update member status.');
+    } finally {
+      setTogglingStatusId(null);
+    }
+  }
+
+  async function handleTogglePrivacy() {
+    setTogglingPrivacy(true);
+    try {
+      const newPrivate = !club.is_private;
+      const { error } = await supabase.from('clubs').update({ is_private: newPrivate }).eq('id', id);
+      if (error) throw error;
+      setClub((prev: any) => ({ ...prev, is_private: newPrivate }));
+    } catch (err: any) {
+      alert(err.message || 'Failed to toggle privacy.');
+    } finally {
+      setTogglingPrivacy(false);
+    }
+  }
+
+  async function cancelInvitation(inviteId: string) {
+    if (!confirm('Cancel this invitation?')) return;
+    try {
+      const { error } = await supabase.from('member_invitations').delete().eq('id', inviteId);
+      if (error) throw error;
+      setPendingInvites(prev => prev.filter(i => i.id !== inviteId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to cancel invitation.');
+    }
   }
 
   async function handleCreateLadder(e: React.FormEvent) {
@@ -234,7 +343,7 @@ export default function ClubView() {
               </button>
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
               <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: 0 }}>{club.name}</h1>
               {isAdmin && (
                 <button
@@ -243,6 +352,22 @@ export default function ClubView() {
                   title="Rename club"
                 >
                   <Pencil size={15} />
+                </button>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={handleTogglePrivacy}
+                  disabled={togglingPrivacy}
+                  style={{ 
+                    fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: '4px',
+                    backgroundColor: club.is_private ? '#fee2e2' : '#dcfce7',
+                    color: club.is_private ? '#dc2626' : '#16a34a',
+                    border: '1px solid', borderColor: club.is_private ? '#fca5a5' : '#86efac',
+                    cursor: 'pointer'
+                  }}
+                  title="Toggle privacy"
+                >
+                  {club.is_private ? 'PRIVATE CLUB' : 'PUBLIC CLUB'}
                 </button>
               )}
             </div>
@@ -330,7 +455,42 @@ export default function ClubView() {
 
       {/* Members */}
       <div className="card">
-        <h2 className="section-title" style={{ marginBottom: '1rem' }}>Members</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+          <h2 className="section-title" style={{ marginBottom: 0 }}>Members</h2>
+          {isAdmin && (
+            <button
+              onClick={() => setShowAddMember(true)}
+              className="btn flex items-center gap-2"
+              style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', backgroundColor: 'var(--primary-color)', color: 'white' }}
+            >
+              <Plus size={14} /> Add Member (Gmail)
+            </button>
+          )}
+        </div>
+        
+        {/* Pending Invitations Section */}
+        {isAdmin && pendingInvites.length > 0 && (
+          <div style={{ marginBottom: '1.5rem', backgroundColor: 'rgba(59, 130, 246, 0.05)', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid var(--accent-color)' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--accent-color)', marginBottom: '0.75rem' }}>Pending Invitations ({pendingInvites.length})</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {pendingInvites.map(inv => (
+                <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                  <div style={{ color: 'var(--text-dark)' }}>
+                    <span style={{ fontWeight: 600 }}>{inv.name}</span> 
+                    <span style={{ color: 'var(--text-light)', marginLeft: '0.5rem' }}>({inv.email})</span>
+                  </div>
+                  <button 
+                    onClick={() => cancelInvitation(inv.id)}
+                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.75rem' }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
           {club.club_members?.map((m: any) => {
             const p = m.profiles;
@@ -355,6 +515,23 @@ export default function ClubView() {
                 }}>
                   {m.role}
                 </span>
+
+                {m.status === 'inactive' && (
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', backgroundColor: '#fee2e2', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                    INACTIVE
+                  </span>
+                )}
+
+                {isAdmin && !isSelf && (
+                  <button
+                    onClick={() => handleToggleMemberStatus(m.player_id, m.status)}
+                    disabled={togglingStatusId === m.player_id}
+                    className="btn btn-outline"
+                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderColor: m.status === 'active' ? '#dc2626' : '#16a34a', color: m.status === 'active' ? '#dc2626' : '#16a34a' }}
+                  >
+                    {m.status === 'active' ? 'Deactivate' : 'Reactivate'}
+                  </button>
+                )}
                 {isAdmin && !isSelf && (
                   <button
                     onClick={async () => {
@@ -518,8 +695,63 @@ export default function ClubView() {
         )}
       </div>
 
-      {/* Edit Modal */}
+      {/* Add Member Modal */}
+      {showAddMember && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+            <button onClick={() => setShowAddMember(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
+              <X size={22} />
+            </button>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-dark)' }}>Add Club Member</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
+              Members will be added automatically once they log in with this Gmail address.
+            </p>
+            <form onSubmit={handleInviteMember} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Gmail Address</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={inviteEmail} 
+                  onChange={e => setInviteEmail(e.target.value)} 
+                  placeholder="e.g. user@gmail.com" 
+                  style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }} 
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Person's Name</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={inviteName} 
+                  onChange={e => setInviteName(e.target.value)} 
+                  placeholder="e.g. John Doe" 
+                  style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }} 
+                />
+              </div>
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-dark)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={sendEmail}
+                    onChange={e => setSendEmail(e.target.checked)}
+                    style={{ transform: 'scale(1.1)', cursor: 'pointer' }}
+                  />
+                  Send invitation email notification via Resend
+                </label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowAddMember(false)}>Cancel</button>
+                <button type="submit" className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }} disabled={inviting}>
+                  {inviting ? 'Inviting...' : 'Send Invitation'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
+      {/* Edit Modal */}
       {showEditModal && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
           <div className="card" style={{ width: '100%', maxWidth: '520px', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>

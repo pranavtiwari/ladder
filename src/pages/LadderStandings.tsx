@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
-import { Trophy, Swords, X, CheckCircle, XCircle, Share2, Palette } from 'lucide-react';
+import { Trophy, Swords, X, CheckCircle, XCircle, Share2 } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',

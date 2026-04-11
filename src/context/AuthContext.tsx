@@ -35,22 +35,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           .single();
 
         if (matchError && matchError.code === 'PGRST116') {
+          // Check for pending invitations to get the owner-specified name
+          const { data: invitations } = await supabase
+            .from('member_invitations')
+            .select('name')
+            .eq('email', currentUser.email?.toLowerCase())
+            .limit(1);
+
+          const invitedName = invitations?.[0]?.name;
+          const finalFirstName = invitedName ? invitedName.split(' ')[0] : first_name;
+          const finalLastName = invitedName ? (invitedName.split(' ').slice(1).join(' ') || last_name) : last_name;
+
           // Profile not found, so we insert
           const { error: insertError } = await supabase
             .from('profiles')
             .insert({
               id: currentUser.id,
-              first_name,
-              last_name,
-              nickname: first_name,
+              first_name: finalFirstName,
+              last_name: finalLastName,
+              nickname: finalFirstName,
               avatar_url
             });
-            
+             
           if (insertError) {
             console.error('Error inserting profile:', insertError);
+          } else {
+            // Process the actual joining logic via RPC
+            await supabase.rpc('process_pending_invitations');
           }
         } else if (matchError) {
           console.error('Error checking profile existence:', matchError);
+        } else {
+          // Even if profile exists, try processing invitations just in case 
+          // they were invited to a new club since their last login.
+          await supabase.rpc('process_pending_invitations');
         }
       } catch (error) {
         console.error('Error ensuring profile exists:', error);

@@ -24,6 +24,20 @@ export default function LadderView() {
   const [joinError, setJoinError] = useState('');
   const [ladderPlayersMap, setLadderPlayersMap] = useState<Map<string, number>>(new Map());
   const [activeTeamId, setActiveTeamId] = useState<string>('');
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  // Ladder Join Requests & Privacy
+  const [joinRequests, setJoinRequests] = useState<any[]>([]);
+  const [myPendingRequest, setMyPendingRequest] = useState(false);
+  const [processingReqId, setProcessingReqId] = useState<string | null>(null);
+  const [togglingPrivacy, setTogglingPrivacy] = useState(false);
+
+  // Invitations
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteName, setInviteName] = useState('');
+  const [sendEmail, setSendEmail] = useState(false);
+  const [inviting, setInviting] = useState(false);
 
   // For doubles team creation
   const [showCreateTeam, setShowCreateTeam] = useState(false);
@@ -69,6 +83,15 @@ export default function LadderView() {
         .single();
       if (lErr) throw lErr;
       setLadder(lad);
+
+      // Check admin status
+      const { data: membership } = await supabase
+        .from('club_members')
+        .select('role')
+        .eq('club_id', id)
+        .eq('player_id', user?.id)
+        .single();
+      setIsAdmin(membership?.role === 'admin');
 
       let loadedTeams = myTeams;
 
@@ -128,6 +151,24 @@ export default function LadderView() {
         return isParticipant;
       });
       setMyMatches(filteredMatches);
+
+      // Load pending requests
+      if (membership?.role === 'admin') {
+        const { data: reqs } = await supabase
+          .from('ladder_join_requests')
+          .select('id, player_id, team_id, status, created_at, profiles(nickname, first_name, avatar_url), teams(name)')
+          .eq('ladder_id', ladderId)
+          .eq('status', 'pending');
+        setJoinRequests(reqs || []);
+      }
+
+      const { data: myReqs } = await supabase
+        .from('ladder_join_requests')
+        .select('id')
+        .eq('ladder_id', ladderId)
+        .eq('player_id', user?.id)
+        .eq('status', 'pending');
+      setMyPendingRequest(myReqs && myReqs.length > 0);
     } catch (err) {
       console.error(err);
     } finally {
@@ -139,11 +180,17 @@ export default function LadderView() {
     setJoining(true);
     setJoinError('');
     try {
-      const nextRank = entries.length + 1;
-      const { error } = await supabase
-        .from('ladder_players')
-        .insert({ ladder_id: ladderId, player_id: user?.id, current_rank: nextRank });
-      if (error) throw error;
+      if (ladder.is_private) {
+        const { error } = await supabase.from('ladder_join_requests').insert({ ladder_id: ladderId, player_id: user?.id });
+        if (error) throw error;
+        setMyPendingRequest(true);
+      } else {
+        const nextRank = entries.length + 1;
+        const { error } = await supabase
+          .from('ladder_players')
+          .insert({ ladder_id: ladderId, player_id: user?.id, current_rank: nextRank });
+        if (error) throw error;
+      }
       await load();
     } catch (err: any) {
       setJoinError(err.message || 'Failed to join ladder.');
@@ -192,22 +239,28 @@ export default function LadderView() {
     setJoining(true);
     setJoinError('');
     try {
-      // Find the team from 'myTeams'
-      const t = myTeams.find(t => t.id === selectedTeam);
-      
-      const nextRank = entries.length + 1;
-      const { error } = await supabase
-        .from('ladder_teams')
-        .insert({ ladder_id: ladderId, team_id: selectedTeam, current_rank: nextRank });
-      if (error) throw error;
-      
-      // Attempt to ensure ladder_players exist for the team members to initialize individual ELO
-      if (t) {
-        // Safe to ignore unique constraint errors
-        await supabase.from('ladder_players').insert([
-          { ladder_id: ladderId, player_id: t.player1_id, current_rank: 0 },
-          { ladder_id: ladderId, player_id: t.player2_id, current_rank: 0 }
-        ]).select().then(() => {}); 
+      if (ladder.is_private) {
+        const { error } = await supabase.from('ladder_join_requests').insert({ ladder_id: ladderId, player_id: user?.id, team_id: selectedTeam });
+        if (error) throw error;
+        setMyPendingRequest(true);
+      } else {
+        // Find the team from 'myTeams'
+        const t = myTeams.find(t => t.id === selectedTeam);
+        
+        const nextRank = entries.length + 1;
+        const { error } = await supabase
+          .from('ladder_teams')
+          .insert({ ladder_id: ladderId, team_id: selectedTeam, current_rank: nextRank });
+        if (error) throw error;
+        
+        // Attempt to ensure ladder_players exist for the team members to initialize individual ELO
+        if (t) {
+          // Safe to ignore unique constraint errors
+          await supabase.from('ladder_players').insert([
+            { ladder_id: ladderId, player_id: t.player1_id, current_rank: 0 },
+            { ladder_id: ladderId, player_id: t.player2_id, current_rank: 0 }
+          ]).select().then(() => {}); 
+        }
       }
 
       await load();
@@ -240,6 +293,93 @@ export default function LadderView() {
       setChallengeErr(err.message || 'Failed to send challenge.');
     } finally {
       setSubmittingChallenge(false);
+    }
+  }
+
+  async function handleInviteToLadder(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail || !inviteName) return;
+    setInviting(true);
+    try {
+      const { data, error } = await supabase.rpc('send_member_invitation', {
+        p_email: inviteEmail.trim(),
+        p_name: inviteName.trim(),
+        p_club_id: id,
+        p_ladder_id: ladderId
+      });
+      if (error) throw error;
+      
+      if (data === 'added') {
+        alert(`${inviteName} is already a user! They have been added to the ladder immediately.`);
+        await load();
+      } else {
+        if (sendEmail) {
+          // call edge function
+          const inviterName = user?.user_metadata?.name || 'A club admin';
+          await supabase.functions.invoke('send-invitation-email', {
+            body: { email: inviteEmail.trim(), name: inviteName.trim(), clubName: ladder?.name, inviterName }
+          });
+        }
+        alert(`Invitation sent to ${inviteEmail}. They will join this ladder automatically when they log in.`);
+      }
+      
+      setShowInviteModal(false);
+      setInviteEmail('');
+      setInviteName('');
+      setSendEmail(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to send invitation.');
+    } finally {
+      setInviting(false);
+    }
+  }
+
+  async function handleRequest(reqId: string, approved: boolean, playerId: string, teamId: string | null) {
+    setProcessingReqId(reqId);
+    try {
+      const newStatus = approved ? 'approved' : 'rejected';
+      const { error: updateErr } = await supabase.from('ladder_join_requests').update({ status: newStatus }).eq('id', reqId);
+      if (updateErr) throw updateErr;
+
+      if (approved) {
+        if (ladder.type === 'singles') {
+          const nextRank = entries.length + 1;
+          const { error } = await supabase.from('ladder_players').insert({ ladder_id: ladderId, player_id: playerId, current_rank: nextRank });
+          if (error) throw error;
+        } else if (teamId) {
+          const nextRank = entries.length + 1;
+          const { error } = await supabase.from('ladder_teams').insert({ ladder_id: ladderId, team_id: teamId, current_rank: nextRank });
+          if (error) throw error;
+          
+          const t = myTeams.find(tea => tea.id === teamId);
+          if (t) {
+            await supabase.from('ladder_players').insert([
+              { ladder_id: ladderId, player_id: t.player1_id, current_rank: 0 },
+              { ladder_id: ladderId, player_id: t.player2_id, current_rank: 0 }
+            ]).select().then(() => {}); 
+          }
+        }
+      }
+      setJoinRequests(prev => prev.filter(r => r.id !== reqId));
+      await load();
+    } catch (err: any) {
+      alert(err.message || 'Failed to process request.');
+    } finally {
+      setProcessingReqId(null);
+    }
+  }
+
+  async function handleTogglePrivacy() {
+    setTogglingPrivacy(true);
+    try {
+      const newPrivate = !ladder.is_private;
+      const { error } = await supabase.from('ladders').update({ is_private: newPrivate }).eq('id', ladderId);
+      if (error) throw error;
+      setLadder({ ...ladder, is_private: newPrivate });
+    } catch (err: any) {
+      alert(err.message || 'Failed to toggle privacy.');
+    } finally {
+      setTogglingPrivacy(false);
     }
   }
 
@@ -284,22 +424,95 @@ export default function LadderView() {
       </Link>
 
       {/* ── Ladder title ── */}
-      <div>
-        <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: '0.2rem' }}>{ladder.name}</h1>
-        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>{SPORT_ICONS[ladder.sport]} {ladder.sport}</span>
-          <span style={{ 
-            fontSize: '0.82rem', 
-            fontWeight: 600, 
-            color: 'var(--text-light)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.02em'
-          }}>
-            {isSingles ? '👤 Singles' : '👥 Doubles'}
-          </span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: '0.2rem' }}>{ladder.name}</h1>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>{SPORT_ICONS[ladder.sport]} {ladder.sport}</span>
+            <span style={{ 
+              fontSize: '0.82rem', 
+              fontWeight: 600, 
+              color: 'var(--text-light)',
+              textTransform: 'uppercase',
+              letterSpacing: '0.02em'
+            }}>
+              {isSingles ? '👤 Singles' : '👥 Doubles'}
+            </span>
+          </div>
+          {ladder.rules && <p style={{ color: 'var(--text-light)', marginTop: '0.5rem', fontSize: '0.875rem' }}>{ladder.rules}</p>}
         </div>
-        {ladder.rules && <p style={{ color: 'var(--text-light)', marginTop: '0.5rem', fontSize: '0.875rem' }}>{ladder.rules}</p>}
+        
+        {isAdmin && (
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {isSingles && (
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="btn flex items-center gap-2"
+                style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', backgroundColor: 'var(--primary-color)', color: 'white' }}
+              >
+                <UserPlus size={16} /> Invite Member
+              </button>
+            )}
+            <button
+              onClick={handleTogglePrivacy}
+              disabled={togglingPrivacy}
+              style={{ 
+                fontSize: '0.85rem', fontWeight: 600, padding: '0.45rem 1rem', borderRadius: '4px',
+                backgroundColor: ladder.is_private ? '#fee2e2' : '#dcfce7',
+                color: ladder.is_private ? '#dc2626' : '#16a34a',
+                border: '1px solid', borderColor: ladder.is_private ? '#fca5a5' : '#86efac',
+                cursor: 'pointer'
+              }}
+              title="Toggle privacy"
+            >
+              {ladder.is_private ? 'PRIVATE LADDER' : 'PUBLIC LADDER'}
+            </button>
+          </div>
+        )}
       </div>
+
+      {isAdmin && joinRequests.length > 0 && (
+        <div className="card" style={{ border: '2px solid #fbbf24', backgroundColor: '#fffbeb' }}>
+          <h2 className="section-title" style={{ marginBottom: '1rem', color: '#92400e' }}>
+            ⏳ Pending Join Requests ({joinRequests.length})
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {joinRequests.map(req => {
+              const p = req.profiles;
+              const name = req.team_id ? req.teams?.name : ([p?.first_name, p?.last_name].filter(Boolean).join(' ') || 'Unknown user');
+              return (
+                <div key={req.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', padding: '0.6rem 0', borderBottom: '1px solid #fde68a' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    {p?.avatar_url && !req.team_id
+                      ? <img src={p.avatar_url} alt="" style={{ width: 32, height: 32, borderRadius: '50%' }} />
+                      : <div style={{ width: 32, height: 32, borderRadius: '50%', backgroundColor: '#d1d5db', display: 'flex', justifyContent: 'center', alignItems: 'center', fontSize: '12px' }}>{req.team_id ? '👥' : ''}</div>
+                    }
+                    <span style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{name}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      className="btn"
+                      style={{ backgroundColor: '#059669', color: 'white', padding: '0.3rem 0.8rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      disabled={processingReqId === req.id}
+                      onClick={() => handleRequest(req.id, true, req.player_id, req.team_id)}
+                    >
+                      <CheckCircle size={14} /> Approve
+                    </button>
+                    <button
+                      className="btn btn-outline"
+                      style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#dc2626', display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                      disabled={processingReqId === req.id}
+                      onClick={() => handleRequest(req.id, false, req.player_id, req.team_id)}
+                    >
+                      <XCircle size={14} /> Reject
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Status bar: rank + team selector (mobile-first top row) ── */}
       <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap', padding: '1rem 1.25rem' }}>
@@ -319,11 +532,11 @@ export default function LadderView() {
           ) : (
             <button
               className="btn"
-              style={{ backgroundColor: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               onClick={joinSingles}
-              disabled={joining}
+              disabled={joining || myPendingRequest}
             >
-              <UserPlus size={16} /> {joining ? 'Joining…' : 'Join Ladder'}
+              <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Request to Join' : 'Join Ladder')}
             </button>
           )
         ) : (
@@ -381,11 +594,11 @@ export default function LadderView() {
             </select>
             <button
               className="btn"
-              style={{ backgroundColor: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+              style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
               onClick={joinDoubles}
-              disabled={joining || !selectedTeam}
+              disabled={joining || !selectedTeam || myPendingRequest}
             >
-              <UserPlus size={16} /> {joining ? 'Joining…' : 'Join'}
+              <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Request to Join' : 'Join')}
             </button>
           </div>
 
@@ -578,6 +791,61 @@ export default function LadderView() {
                 <CheckCircle size={15} /> {submittingChallenge ? 'Sending…' : 'Send Challenge'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Invite Modal */}
+      {showInviteModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 60 }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+            <button onClick={() => setShowInviteModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
+              <X size={22} />
+            </button>
+            <h2 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-dark)' }}>Invite to Ladder</h2>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-light)', marginBottom: '1.5rem' }}>
+              The player will be added to this ladder automatically when they log in with this Gmail address.
+            </p>
+            <form onSubmit={handleInviteToLadder} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Gmail Address</label>
+                <input 
+                  type="email" 
+                  required 
+                  value={inviteEmail} 
+                  onChange={e => setInviteEmail(e.target.value)} 
+                  placeholder="e.g. user@gmail.com" 
+                  style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }} 
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.3rem' }}>Name</label>
+                <input 
+                  type="text" 
+                  required 
+                  value={inviteName} 
+                  onChange={e => setInviteName(e.target.value)} 
+                  placeholder="e.g. John Doe" 
+                  style={{ width: '100%', padding: '0.6rem', border: '1px solid #d1d5db', borderRadius: '6px' }} 
+                />
+              </div>
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: 'var(--text-dark)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={sendEmail}
+                    onChange={e => setSendEmail(e.target.checked)}
+                    style={{ transform: 'scale(1.1)', cursor: 'pointer' }}
+                  />
+                  Send invitation email notification via Resend
+                </label>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
+                <button type="button" className="btn btn-outline" onClick={() => setShowInviteModal(false)}>Cancel</button>
+                <button type="submit" className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }} disabled={inviting}>
+                  {inviting ? 'Sending...' : 'Invite Player'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

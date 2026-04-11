@@ -289,3 +289,35 @@ create trigger on_match_completed_elo
 create trigger on_match_completed_bump
   after update of status on public.matches
   for each row execute procedure public.handle_match_completion();
+
+-- 1. Clubs privacy
+alter table public.clubs add column if not exists is_private boolean default false;
+
+-- 2. Ladders privacy
+alter table public.ladders add column if not exists is_private boolean default true;
+
+-- 3. Member status
+alter table public.club_members add column if not exists status text default 'active' check (status in ('active', 'inactive'));
+
+-- 4. Ladder Join Requests
+create table if not exists public.ladder_join_requests (
+  id uuid default gen_random_uuid() primary key,
+  ladder_id uuid references public.ladders not null,
+  player_id uuid references public.profiles not null,
+  team_id uuid references public.teams,
+  status text default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+-- Policies for ladder join requests
+alter table public.ladder_join_requests enable row level security;
+create policy "Ladder join requests are viewable by participants and club admins." on public.ladder_join_requests for select using (
+  auth.uid() = player_id or
+  exists (select 1 from public.club_members cm inner join public.ladders l on cm.club_id = l.club_id where l.id = ladder_join_requests.ladder_id and cm.player_id = auth.uid() and cm.role = 'admin')
+);
+create policy "Users can request to join ladders." on public.ladder_join_requests for insert with check (
+  auth.uid() = player_id
+);
+create policy "Club admins can update ladder join requests." on public.ladder_join_requests for update using (
+  exists (select 1 from public.club_members cm inner join public.ladders l on cm.club_id = l.club_id where l.id = ladder_join_requests.ladder_id and cm.player_id = auth.uid() and cm.role = 'admin')
+);
