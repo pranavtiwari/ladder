@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Plus, Users } from 'lucide-react';
+import { Plus, Users, Lock, Unlock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function ClubDetails() {
@@ -158,7 +158,12 @@ export default function ClubDetails() {
           {clubs.map(club => (
             <div key={club.id} className="card flex-col justify-between hover:shadow-md transition-shadow" style={{ minHeight: '160px' }}>
               <div>
-                <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-dark)' }}>{club.name}</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                  <h3 className="text-xl font-bold mb-2" style={{ color: 'var(--text-dark)' }}>{club.name}</h3>
+                  <div title={club.is_private ? 'Private Club' : 'Public Club'} style={{ color: 'var(--text-light)', marginTop: '0.2rem' }}>
+                    {club.is_private ? <Lock size={16} /> : <Unlock size={16} />}
+                  </div>
+                </div>
                 <p style={{ color: 'var(--text-light)', marginBottom: '1rem', fontSize: '0.875rem', minHeight: '40px', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{club.description || 'No description provided.'}</p>
               </div>
               <div className="flex justify-between items-center pt-4" style={{ borderTop: '1px solid var(--border-color)' }}>

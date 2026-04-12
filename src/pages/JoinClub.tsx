@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Search, CheckCircle } from 'lucide-react';
+import { Search, CheckCircle, Unlock } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -98,7 +98,12 @@ export default function JoinClub() {
             return (
               <div key={club.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-dark)', marginBottom: '0.25rem' }}>{club.name}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                    <h3 style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-dark)' }}>{club.name}</h3>
+                    <div title="Public Club" style={{ color: 'var(--text-light)', display: 'flex', alignItems: 'center' }}>
+                      <Unlock size={14} />
+                    </div>
+                  </div>
                   <p style={{ color: 'var(--text-light)', fontSize: '0.85rem', marginBottom: '0.5rem' }}>{club.description || 'No description.'}</p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
                     {(club.sports || []).map((s: string) => (

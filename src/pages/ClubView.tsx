@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Pencil, X, Save, CheckCircle, XCircle, Plus, Trophy, Trash2 } from 'lucide-react';
+import { ArrowLeft, Pencil, X, Save, CheckCircle, XCircle, Plus, Trophy, Trash2, Lock, Unlock } from 'lucide-react';
 
 const ALL_SPORTS = ['Badminton', 'Tennis', 'Table Tennis', 'Squash', 'Pickle Ball', 'Paddle'];
 const SPORT_ICONS: Record<string, string> = {
@@ -390,32 +390,12 @@ export default function ClubView() {
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.25rem', flexWrap: 'wrap' }}>
-              <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: 0 }}>{club.name}</h1>
-              {isAdmin && (
-                <button
-                  onClick={() => { setClubNameDraft(club.name); setEditingClubName(true); }}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '2px' }}
-                  title="Rename club"
-                >
-                  <Pencil size={15} />
-                </button>
-              )}
-              {isAdmin && (
-                <button
-                  onClick={handleTogglePrivacy}
-                  disabled={togglingPrivacy}
-                  style={{ 
-                    fontSize: '0.75rem', fontWeight: 600, padding: '0.2rem 0.6rem', borderRadius: '4px',
-                    backgroundColor: club.is_private ? '#fee2e2' : '#dcfce7',
-                    color: club.is_private ? '#dc2626' : '#16a34a',
-                    border: '1px solid', borderColor: club.is_private ? '#fca5a5' : '#86efac',
-                    cursor: 'pointer'
-                  }}
-                  title="Toggle privacy"
-                >
-                  {club.is_private ? 'PRIVATE CLUB' : 'PUBLIC CLUB'}
-                </button>
-              )}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: 0 }}>{club.name}</h1>
+                <div title={club.is_private ? 'Private Club' : 'Public Club'} style={{ color: 'var(--text-light)', display: 'flex', alignItems: 'center' }}>
+                  {club.is_private ? <Lock size={20} /> : <Unlock size={20} />}
+                </div>
+              </div>
             </div>
           )}
           <p style={{ color: 'var(--text-light)' }}>{club.description || 'No description provided.'}</p>
@@ -880,6 +860,24 @@ export default function ClubView() {
                     );
                   })}
                 </div>
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.4rem' }}>Privacy</label>
+                <button
+                  type="button"
+                  onClick={handleTogglePrivacy}
+                  disabled={togglingPrivacy}
+                  style={{ 
+                    width: '100%', padding: '0.6rem', borderRadius: '6px', fontSize: '0.875rem', fontWeight: 600,
+                    backgroundColor: club.is_private ? '#fee2e2' : '#dcfce7',
+                    color: club.is_private ? '#dc2626' : '#16a34a',
+                    border: '1px solid', borderColor: club.is_private ? '#fca5a5' : '#86efac',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
+                  }}
+                >
+                  {club.is_private ? <Lock size={16} /> : <Unlock size={16} />}
+                  {togglingPrivacy ? 'Updating...' : club.is_private ? 'Private — click to make Public' : 'Public — click to make Private'}
+                </button>
               </div>
               {saveMsg && <p style={{ color: saveMsg === 'Saved!' ? '#059669' : '#dc2626', fontSize: '0.875rem' }}>{saveMsg}</p>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>

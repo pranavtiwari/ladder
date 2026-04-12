@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle, Pencil, Lock, Globe } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -85,6 +85,20 @@ export default function LadderView() {
   const [adminWinnerId, setAdminWinnerId] = useState('');
   const [adminScore, setAdminScore] = useState('');
   const [submittingAdminMatch, setSubmittingAdminMatch] = useState(false);
+
+  // Edit ladder modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Privacy info modal (visible to all)
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+
+  // Edit team modal
+  const [showEditTeamModal, setShowEditTeamModal] = useState(false);
+  const [editTeamId, setEditTeamId] = useState('');
+  const [editTeamName, setEditTeamName] = useState('');
+  const [savingTeamName, setSavingTeamName] = useState(false);
 
   // Match History logic
   const [recentMatches, setRecentMatches] = useState<any[]>([]);
@@ -301,6 +315,12 @@ export default function LadderView() {
 
     if (!partner1 || !partner2) {
       alert('Please select both partners.');
+      setCreatingTeam(false);
+      return;
+    }
+
+    if (partner1 === partner2) {
+      alert('A team cannot have the same player assigned twice. Please choose a different partner.');
       setCreatingTeam(false);
       return;
     }
@@ -607,6 +627,53 @@ export default function LadderView() {
     }
   }
 
+  async function saveEditLadder() {
+    if (!editName.trim()) return;
+    setSavingEdit(true);
+    try {
+      const { error } = await supabase.from('ladders').update({ name: editName.trim() }).eq('id', ladderId);
+      if (error) throw error;
+      setLadder({ ...ladder, name: editName.trim() });
+      setShowEditModal(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to save changes.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function saveEditTeam() {
+    if (!editTeamName.trim() || !editTeamId) return;
+    setSavingTeamName(true);
+    try {
+      const { error } = await supabase.from('teams').update({ name: editTeamName.trim() }).eq('id', editTeamId);
+      if (error) throw error;
+      
+      setMyTeams(prev => prev.map(t => t.id === editTeamId ? { ...t, name: editTeamName.trim() } : t));
+      setEntries(prev => prev.map(e => e.team_id === editTeamId ? { ...e, teams: { ...e.teams, name: editTeamName.trim() } } : e));
+      setAllClubTeams(prev => prev.map(t => t.id === editTeamId ? { ...t, name: editTeamName.trim() } : t));
+
+      setShowEditTeamModal(false);
+    } catch (err: any) {
+      alert(err.message || 'Failed to rename team.');
+    } finally {
+      setSavingTeamName(false);
+    }
+  }
+
+  async function removeParticipant(entryId: string) {
+    if (!confirm('Are you sure you want to remove this participant from the ladder?')) return;
+    
+    try {
+      const table = isSingles ? 'ladder_players' : 'ladder_teams';
+      const { error } = await supabase.from(table).delete().eq('id', entryId);
+      if (error) throw error;
+      setEntries(entries.filter(e => e.id !== entryId));
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove participant.');
+    }
+  }
+
   async function handleAddParticipant() {
     if (!participantToAdd) return;
 
@@ -694,8 +761,28 @@ export default function LadderView() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
-          <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: '0.2rem' }}>{ladder.name}</h1>
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
+            <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: 0 }}>{ladder.name}</h1>
+            {/* Lock icon — clickable by everyone */}
+            <button
+              onClick={() => setShowPrivacyModal(true)}
+              title={ladder.is_private ? 'Private ladder' : 'Public ladder'}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.15rem', display: 'flex', alignItems: 'center', color: ladder.is_private ? '#dc2626' : '#16a34a' }}
+            >
+              {ladder.is_private ? <Lock size={18} /> : <Globe size={18} />}
+            </button>
+            {/* Pencil icon — admin only */}
+            {isAdmin && (
+              <button
+                onClick={() => { setEditName(ladder.name); setShowEditModal(true); }}
+                title="Edit ladder settings"
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.15rem', display: 'flex', alignItems: 'center', color: 'var(--text-light)' }}
+              >
+                <Pencil size={16} />
+              </button>
+            )}
+          </div>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginTop: '0.25rem' }}>
             <span style={{ fontSize: '0.875rem', color: 'var(--text-light)' }}>{SPORT_ICONS[ladder.sport]} {ladder.sport}</span>
             <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
               {isSingles ? '👤 Singles' : '👥 Doubles'}
@@ -703,30 +790,15 @@ export default function LadderView() {
           </div>
           {ladder.rules && <p style={{ color: 'var(--text-light)', marginTop: '0.5rem', fontSize: '0.875rem' }}>{ladder.rules}</p>}
         </div>
-        
+
         {isAdmin && (
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button
-              onClick={() => setShowAdminMatchModal(true)}
-              className="btn flex items-center gap-2"
-              style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', backgroundColor: 'var(--orange-accent)', color: 'white' }}
-            >
-              <Swords size={16} /> Admin Result
-            </button>
-            <button
-              onClick={handleTogglePrivacy}
-              disabled={togglingPrivacy}
-              style={{ 
-                fontSize: '0.85rem', fontWeight: 600, padding: '0.45rem 1rem', borderRadius: '4px',
-                backgroundColor: ladder.is_private ? '#fee2e2' : '#dcfce7',
-                color: ladder.is_private ? '#dc2626' : '#16a34a',
-                border: '1px solid', borderColor: ladder.is_private ? '#fca5a5' : '#86efac',
-                cursor: 'pointer'
-              }}
-            >
-              {ladder.is_private ? 'PRIVATE LADDER' : 'PUBLIC LADDER'}
-            </button>
-          </div>
+          <button
+            onClick={() => setShowAdminMatchModal(true)}
+            className="btn"
+            style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', backgroundColor: 'var(--orange-accent)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <Swords size={16} /> Add match result
+          </button>
         )}
       </div>
 
@@ -786,49 +858,98 @@ export default function LadderView() {
               onClick={joinSingles}
               disabled={joining || myPendingRequest}
             >
-              <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Request to Join' : 'Join Ladder')}
+              <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Join the ladder' : 'Join Ladder')}
             </button>
           )
         ) : (
           <>
             {alreadyJoined && (
               <>
+                {myTeamsInLadder.length > 1 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <select
+                      value={activeTeamId}
+                      onChange={e => setActiveTeamId(e.target.value)}
+                      style={{ padding: '0.35rem 0.6rem', border: '1px solid rgba(34,197,94,0.3)', backgroundColor: 'rgba(34,197,94,0.15)', color: 'var(--primary-color)', borderRadius: '6px', fontSize: '1rem', fontWeight: 600 }}
+                    >
+                      {myTeamsInLadder.map((mt: any) => (
+                        <option key={mt.team_id} value={mt.team_id}>As {mt.teams?.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => {
+                        setEditTeamId(activeTeamId);
+                        setEditTeamName(myTeamsInLadder.find(mt => mt.team_id === activeTeamId)?.teams?.name || '');
+                        setShowEditTeamModal(true);
+                      }}
+                      className="btn btn-outline"
+                      style={{ padding: '0.35rem 0.5rem' }}
+                      title="Edit team name"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ padding: '0.35rem 0.6rem', backgroundColor: 'rgba(34,197,94,0.15)', color: 'var(--primary-color)', borderRadius: '6px', fontSize: '1rem', fontWeight: 600, border: '1px solid rgba(34, 197, 94, 0.3)' }}>
+                      {myTeamsInLadder[0]?.teams?.name}
+                    </span>
+                    <button
+                      onClick={() => {
+                        const teamId = myTeamsInLadder[0]?.team_id;
+                        setEditTeamId(teamId);
+                        setEditTeamName(myTeamsInLadder[0]?.teams?.name || '');
+                        setShowEditTeamModal(true);
+                      }}
+                      className="btn btn-outline"
+                      style={{ padding: '0.35rem 0.5rem' }}
+                      title="Edit team name"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  </div>
+                )}
                 <span style={{ padding: '0.4rem 1rem', borderRadius: '8px', backgroundColor: 'rgba(34, 197, 94, 0.15)', color: 'var(--primary-color)', fontWeight: 800, fontSize: '1rem', border: '1px solid rgba(34, 197, 94, 0.3)' }}>
                   ✅ RANK #{myActiveRank}
                 </span>
-                {myTeamsInLadder.length > 1 && (
-                  <select
-                    value={activeTeamId}
-                    onChange={e => setActiveTeamId(e.target.value)}
-                    style={{ padding: '0.35rem 0.6rem', border: '1px solid rgba(34,197,94,0.3)', backgroundColor: 'rgba(34,197,94,0.15)', color: 'var(--primary-color)', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 600 }}
-                  >
-                    {myTeamsInLadder.map((mt: any) => (
-                      <option key={mt.team_id} value={mt.team_id}>As {mt.teams?.name}</option>
-                    ))}
-                  </select>
-                )}
               </>
             )}
             {!alreadyJoined && (
               <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
-                <select
-                  value={selectedTeam}
-                  onChange={e => handleTeamSelectChange(e.target.value)}
-                  style={{ flex: 1, minWidth: '180px', padding: '0.45rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
-                >
-                  <option value="">Select a team to join…</option>
-                  {availableTeamsForJoin.map((t: any) => (
-                    <option key={t.id} value={t.id}>{t.name || 'Unnamed Team'}</option>
-                  ))}
-                  <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
-                </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: '180px' }}>
+                  <select
+                    value={selectedTeam}
+                    onChange={e => handleTeamSelectChange(e.target.value)}
+                    style={{ flex: 1, padding: '0.45rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+                  >
+                    <option value="">Select team…</option>
+                    {availableTeamsForJoin.map((t: any) => (
+                      <option key={t.id} value={t.id}>{t.name || 'Unnamed Team'}</option>
+                    ))}
+                    <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
+                  </select>
+                  {selectedTeam && selectedTeam !== CREATE_TEAM_VALUE && (
+                    <button
+                      onClick={() => {
+                        setEditTeamId(selectedTeam);
+                        setEditTeamName(availableTeamsForJoin.find(t => t.id === selectedTeam)?.name || '');
+                        setShowEditTeamModal(true);
+                      }}
+                      className="btn btn-outline"
+                      style={{ padding: '0.45rem 0.5rem' }}
+                      title="Edit team name"
+                    >
+                      <Pencil size={15} />
+                    </button>
+                  )}
+                </div>
                 <button
                   className="btn"
                   style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white' }}
                   onClick={joinDoubles}
                   disabled={joining || !selectedTeam || myPendingRequest}
                 >
-                  <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Request to Join' : 'Join')}
+                  <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Join the ladder' : 'Join')}
                 </button>
               </div>
             )}
@@ -950,7 +1071,7 @@ export default function LadderView() {
               <div style={{ marginTop: '1.25rem' }}>
                 {!showAddParticipant ? (
                   <button onClick={() => setShowAddParticipant(true)} className="btn btn-outline" style={{ width: '100%', borderStyle: 'dashed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontSize: '0.85rem' }}>
-                    <UserPlus size={16} /> Add {isSingles ? 'Player' : 'Team'} to Bottom
+                    <UserPlus size={16} /> Add {isSingles ? 'Player' : 'Team'}
                   </button>
                 ) : (
                   <div style={{ backgroundColor: 'var(--bg-light)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
@@ -966,12 +1087,12 @@ export default function LadderView() {
                         </select>
                       ) : (
                         <select className="input" value={participantToAdd} onChange={(e) => { if (e.target.value === CREATE_TEAM_VALUE) { setShowCreateTeam(true); setParticipantToAdd(''); } else { setParticipantToAdd(e.target.value); } }} style={{ width: '100%' }}>
-                          <option value="">Select an existing team...</option>
+                          <option value="">Select team…</option>
                           {allClubTeams?.filter(t => !entries.some(e => e.team_id === t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                           <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
                         </select>
                       )}
-                      <button onClick={handleAddParticipant} disabled={!participantToAdd || processingAdd} className="btn" style={{ width: '100%' }}>{processingAdd ? 'Adding...' : `Add to Bottom`}</button>
+                      <button onClick={handleAddParticipant} disabled={!participantToAdd || processingAdd} className="btn" style={{ width: '100%', backgroundColor: 'var(--primary-color)', color: 'white' }}>{processingAdd ? 'Adding...' : isSingles ? 'Add player' : 'Add team'}</button>
                     </div>
                   </div>
                 )}
@@ -1094,6 +1215,118 @@ export default function LadderView() {
                   <button className="btn btn-outline" onClick={() => setShowAdminMatchModal(false)}>Cancel</button>
                   <button className="btn" onClick={submitAdminMatch} disabled={submittingAdminMatch}>{submittingAdminMatch ? 'Recording...' : 'Record'}</button>
                </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Edit Ladder Modal (admin only) ─────────────────────────────── */}
+      {showEditModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '400px', position: 'relative' }}>
+            <button onClick={() => setShowEditModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            <h3 style={{ marginBottom: '1.25rem' }}>Edit Ladder Settings</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.3rem' }}>Ladder Name</label>
+                <input
+                  className="input"
+                  style={{ width: '100%' }}
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  placeholder="Ladder name"
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.5rem' }}>Privacy</label>
+                <button
+                  onClick={handleTogglePrivacy}
+                  disabled={togglingPrivacy}
+                  style={{
+                    width: '100%', padding: '0.6rem 1rem', borderRadius: '8px', fontWeight: 600, fontSize: '0.875rem',
+                    backgroundColor: ladder.is_private ? '#fee2e2' : '#dcfce7',
+                    color: ladder.is_private ? '#dc2626' : '#16a34a',
+                    border: `1px solid ${ladder.is_private ? '#fca5a5' : '#86efac'}`,
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem'
+                  }}
+                >
+                  {ladder.is_private ? <Lock size={15} /> : <Globe size={15} />}
+                  {togglingPrivacy ? 'Updating…' : ladder.is_private ? 'Private — click to make Public' : 'Public — click to make Private'}
+                </button>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <button className="btn btn-outline" onClick={() => setShowEditModal(false)}>Cancel</button>
+                <button className="btn" onClick={saveEditLadder} disabled={savingEdit}>{savingEdit ? 'Saving…' : 'Save'}</button>
+              </div>
+              <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+                <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Ladder Participants</h4>
+                {entries.length === 0 ? (
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-light)' }}>No participants yet.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxHeight: '200px', overflowY: 'auto' }}>
+                    {entries.map(e => (
+                      <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-light)', padding: '0.5rem 0.75rem', borderRadius: '4px', fontSize: '0.85rem' }}>
+                        <span>{isSingles ? (e.profiles?.nickname || e.profiles?.first_name || 'Unknown') : (e.teams?.name || 'Unnamed Team')}</span>
+                        <button onClick={() => removeParticipant(e.id)} style={{ color: '#dc2626', background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem' }} title="Remove from ladder">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Privacy Info Modal (visible to all) ────────────────────────── */}
+      {showPrivacyModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '380px', position: 'relative' }}>
+            <button onClick={() => setShowPrivacyModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '1rem' }}>
+              {ladder.is_private
+                ? <Lock size={22} style={{ color: '#dc2626' }} />
+                : <Globe size={22} style={{ color: '#16a34a' }} />}
+              <h3 style={{ margin: 0 }}>{ladder.is_private ? 'Private Ladder' : 'Public Ladder'}</h3>
+            </div>
+            {ladder.is_private ? (
+              <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+                This ladder is <strong>private</strong>. Players cannot join on their own — they must submit a join request which an admin reviews and approves. Only approved members appear in the standings.
+              </p>
+            ) : (
+              <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', lineHeight: '1.5' }}>
+                This ladder is <strong>open to everyone</strong>. Any club member can join instantly without admin approval.
+              </p>
+            )}
+            <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn" onClick={() => setShowPrivacyModal(false)}>Got it</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Edit Team Modal ─────────────────────────────── */}
+      {showEditTeamModal && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120, padding: '1rem' }}>
+          <div className="card" style={{ width: '100%', maxWidth: '380px', position: 'relative' }}>
+            <button onClick={() => setShowEditTeamModal(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+            <h3 style={{ marginBottom: '1.25rem' }}>Edit Team Name</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 500, marginBottom: '0.3rem' }}>Team Name</label>
+                <input
+                  className="input"
+                  style={{ width: '100%' }}
+                  value={editTeamName}
+                  onChange={e => setEditTeamName(e.target.value)}
+                  placeholder="Team name"
+                />
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '0.25rem' }}>
+                <button className="btn btn-outline" onClick={() => setShowEditTeamModal(false)}>Cancel</button>
+                <button className="btn" onClick={saveEditTeam} disabled={savingTeamName}>{savingTeamName ? 'Saving…' : 'Save'}</button>
+              </div>
             </div>
           </div>
         </div>
