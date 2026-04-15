@@ -321,3 +321,40 @@ create policy "Users can request to join ladders." on public.ladder_join_request
 create policy "Club admins can update ladder join requests." on public.ladder_join_requests for update using (
   exists (select 1 from public.club_members cm inner join public.ladders l on cm.club_id = l.club_id where l.id = ladder_join_requests.ladder_id and cm.player_id = auth.uid() and cm.role = 'admin')
 );
+
+-- Trigger to clean up teams and matches when an invite is cancelled
+create or replace function public.handle_invite_deletion()
+returns trigger as $$
+begin
+  -- 1. Delete matches involving these teams
+  delete from public.matches 
+  where challenger_team_id in (
+    select id from public.teams where invited_partner_id = old.id or invited_partner2_id = old.id
+  ) or defender_team_id in (
+    select id from public.teams where invited_partner_id = old.id or invited_partner2_id = old.id
+  );
+
+  -- 2. Delete ladder teams
+  delete from public.ladder_teams
+  where team_id in (
+    select id from public.teams where invited_partner_id = old.id or invited_partner2_id = old.id
+  );
+
+  -- 3. Delete ladder join requests
+  delete from public.ladder_join_requests
+  where team_id in (
+    select id from public.teams where invited_partner_id = old.id or invited_partner2_id = old.id
+  );
+
+  -- 4. Delete the teams themselves
+  delete from public.teams 
+  where invited_partner_id = old.id or invited_partner2_id = old.id;
+
+  return old;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_invite_deleted on public.member_invitations;
+create trigger on_invite_deleted
+  after delete on public.member_invitations
+  for each row execute procedure public.handle_invite_deletion();
