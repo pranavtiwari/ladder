@@ -150,7 +150,7 @@ export default function LadderView() {
       } else {
         const { data: teams } = await supabase
           .from('ladder_teams')
-          .select('*, teams(name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name))')
+          .select('*, teams(name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, doubles_elo), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, doubles_elo))')
           .eq('ladder_id', ladderId);
         const sorted = sortByRank(teams || []);
         setEntries(sorted);
@@ -176,21 +176,8 @@ export default function LadderView() {
         .from('club_members')
         .select('player_id, profiles(nickname, first_name)')
         .eq('club_id', id);
-      
-      // Also include pending invited members so they can be added to teams
-      const { data: invitedMembers } = await supabase
-        .from('member_invitations')
-        .select('id, name, email')
-        .eq('club_id', id);
-      
-      const invitedAsPseudoMembers = (invitedMembers || []).map((inv: any) => ({
-        player_id: `invite:${inv.id}`,  // synthetic ID to distinguish
-        profiles: { nickname: `${inv.name} (Invited)`, first_name: inv.name },
-        _isInvite: true,
-        _inviteEmail: inv.email,
-      }));
-      
-      setClubMembers([...(members || []), ...invitedAsPseudoMembers]);
+              
+      setClubMembers(members || []);
 
       // Load all teams in club for "Add Participant"
       const { data: act } = await supabase
@@ -273,6 +260,8 @@ export default function LadderView() {
           defender_team:teams!matches_defender_team_id_fkey(name)
         `)
         .eq('ladder_id', ladderId)
+        .in('status', ['accepted', 'completed'])
+        .not('played_at', 'is', null)
         .order('played_at', { ascending: false })
         .limit(10);
       setRecentMatches(recentData || []);
@@ -325,26 +314,16 @@ export default function LadderView() {
       return;
     }
 
-    // Detect invited (not-yet-signed-up) members
-    const partner1IsInvite = String(partner1).startsWith('invite:');
-    const partner2IsInvite = String(partner2).startsWith('invite:');
+    // Duplicate team check against ALL existing club teams
+    const existingTeam = allClubTeams.find(
+      (t: any) => (t.player1_id === partner1 && t.player2_id === partner2) ||
+                  (t.player1_id === partner2 && t.player2_id === partner1)
+    );
 
-    const finalPlayer1 = partner1IsInvite ? null : (partner1 as string);
-    const finalPlayer2 = partner2IsInvite ? null : (partner2 as string);
-    const invitedPartnerId  = partner1IsInvite ? partner1.replace('invite:', '') : null;
-    const invitedPartner2Id = partner2IsInvite ? partner2.replace('invite:', '') : null;
-
-    // Duplicate team check (only for two real members)
-    if (!isAdmin && !partner1IsInvite && !partner2IsInvite) {
-      const existingTeam = myTeams.find(
-        (t: any) => (t.player1_id === finalPlayer1 && t.player2_id === finalPlayer2) ||
-                    (t.player1_id === finalPlayer2 && t.player2_id === finalPlayer1)
-      );
-      if (existingTeam) {
-        alert(`You already have a team with this player (${existingTeam.name}). Please use it instead.`);
-        setCreatingTeam(false);
-        return;
-      }
+    if (existingTeam) {
+      alert(`A team already exists with these two players (${existingTeam.name}). Please use it instead.`);
+      setCreatingTeam(false);
+      return;
     }
 
     try {
@@ -353,10 +332,8 @@ export default function LadderView() {
         .insert({
           club_id: id,
           name: teamName,
-          player1_id: finalPlayer1,
-          player2_id: finalPlayer2,
-          invited_partner_id: invitedPartnerId,
-          invited_partner2_id: invitedPartner2Id,
+          player1_id: partner1,
+          player2_id: partner2,
         })
         .select()
         .single();
@@ -418,11 +395,28 @@ export default function LadderView() {
     }
   }
 
+  function hasOverlappingPlayers(team1Id: string, team2Id: string) {
+    const t1 = allClubTeams.find(t => t.id === team1Id);
+    const t2 = allClubTeams.find(t => t.id === team2Id);
+    if (!t1 || !t2) return false;
+    return (
+      (t1.player1_id && (t1.player1_id === t2.player1_id || t1.player1_id === t2.player2_id)) ||
+      (t1.player2_id && (t1.player2_id === t2.player1_id || t1.player2_id === t2.player2_id))
+    );
+  }
+
   async function submitChallenge() {
     if (!challengeTarget) return;
     setSubmittingChallenge(true);
     setChallengeErr('');
     try {
+      const chalTeamId = isSingles ? null : (challengeWithTeamId || activeTeamId || myTeamsInLadder[0]?.team_id);
+      
+      if (!isSingles && chalTeamId && challengeTarget.team_id) {
+        if (hasOverlappingPlayers(chalTeamId, challengeTarget.team_id)) {
+          throw new Error('Cannot challenge a team with overlapping players.');
+        }
+      }
       const payload: any = {
         ladder_id: ladderId,
         challenger_id: user?.id,
@@ -449,6 +443,13 @@ export default function LadderView() {
     setSubmittingQuickRecord(true);
     setQrErr('');
     try {
+      const chalTeamId = isSingles ? null : (activeTeamId || myTeamsInLadder[0]?.team_id);
+      
+      if (!isSingles && chalTeamId && quickRecordTarget.team_id) {
+        if (hasOverlappingPlayers(chalTeamId, quickRecordTarget.team_id)) {
+          throw new Error('Cannot record a match between teams with overlapping players.');
+        }
+      }
       const payload: any = {
         ladder_id: ladderId,
         challenger_id: user?.id,
@@ -490,6 +491,13 @@ export default function LadderView() {
     if (adminP1Id === adminP2Id) {
       alert('Participants cannot be the same.');
       return;
+    }
+    
+    if (!isSingles && adminP1Id && adminP2Id) {
+      if (hasOverlappingPlayers(adminP1Id, adminP2Id)) {
+        alert('Cannot record a match between teams with overlapping players.');
+        return;
+      }
     }
     
     setSubmittingAdminMatch(true);
@@ -677,10 +685,6 @@ export default function LadderView() {
   async function handleAddParticipant() {
     if (!participantToAdd) return;
 
-    if (String(participantToAdd).startsWith('invite:')) {
-      alert('Invited members must sign up and join the club before they can be added to the ladder directly. Please ask them to accept their invite.');
-      return;
-    }
 
     setProcessingAdd(true);
     try {
@@ -1007,7 +1011,15 @@ export default function LadderView() {
             {entries.map((entry: any, i: number) => {
               const isMe = isSingles ? entry.player_id === user?.id : (entry.teams?.player1_id === user?.id || entry.teams?.player2_id === user?.id);
               const displayName = isSingles ? (entry.profiles?.nickname || entry.profiles?.first_name || '—') : (entry.teams?.name || 'Unnamed Team');
-              const subText = isSingles ? `${entry.wins}W – ${entry.losses}L · ELO: ${entry.elo_rating ?? 800}` : `${entry.wins}W – ${entry.losses}L · Team ELO: ${entry.elo_rating ?? 800}`;
+              
+              const p1Name = entry.teams?.profiles_player1?.nickname || entry.teams?.profiles_player1?.first_name || 'P1';
+              const p1Elo = entry.teams?.profiles_player1?.doubles_elo ?? 800;
+              const p2Name = entry.teams?.profiles_player2?.nickname || entry.teams?.profiles_player2?.first_name || 'P2';
+              const p2Elo = entry.teams?.profiles_player2?.doubles_elo ?? 800;
+              
+              const subText = isSingles 
+                ? `${entry.wins}W – ${entry.losses}L · ELO: ${entry.elo_rating ?? 800}` 
+                : `${entry.wins}W – ${entry.losses}L · Team ELO: ${entry.elo_rating ?? 800} (${p1Name}: ${p1Elo}, ${p2Name}: ${p2Elo})`;
               const rank = entry.display_rank;
               const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
               const canChallenge = !isMe && alreadyJoined && myActiveRank !== null && Math.abs(rank - myActiveRank) <= 2;

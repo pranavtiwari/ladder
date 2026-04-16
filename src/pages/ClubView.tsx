@@ -54,8 +54,6 @@ export default function ClubView() {
   const [inviting, setInviting] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
 
-  // Deactivate
-  const [togglingStatusId, setTogglingStatusId] = useState<string | null>(null);
 
   // Privacy
   const [togglingPrivacy, setTogglingPrivacy] = useState(false);
@@ -229,7 +227,6 @@ export default function ClubView() {
   }
 
   async function handleToggleMemberStatus(playerId: string, currentStatus: string) {
-    setTogglingStatusId(playerId);
     try {
       const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
       const { error } = await supabase.from('club_members').update({ status: newStatus }).eq('club_id', id).eq('player_id', playerId);
@@ -241,8 +238,6 @@ export default function ClubView() {
       }));
     } catch (err: any) {
       alert(err.message || 'Failed to update member status.');
-    } finally {
-      setTogglingStatusId(null);
     }
   }
 
@@ -266,10 +261,26 @@ export default function ClubView() {
       const { error } = await supabase.from('member_invitations').delete().eq('id', inviteId);
       if (error) throw error;
       setPendingInvites(prev => prev.filter(i => i.id !== inviteId));
+      loadClub(); // the trigger will wipe the dummy profile from club_members
     } catch (err: any) {
       alert(err.message || 'Failed to cancel invitation.');
     }
   }
+
+  async function handleRemoveMember(playerId: string) {
+    if (!confirm('Are you sure you want to remove this member from the club?')) return;
+    try {
+      const { error } = await supabase.from('club_members').delete().eq('club_id', id).eq('player_id', playerId);
+      if (error) throw error;
+      setClub((prev: any) => ({
+        ...prev,
+        club_members: prev.club_members.filter((m: any) => m.player_id !== playerId)
+      }));
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove member.');
+    }
+  }
+
 
   async function handleCreateLadder(e: React.FormEvent) {
     e.preventDefault();
@@ -498,146 +509,162 @@ export default function ClubView() {
         {!isAdmin && <p style={{ marginTop: '1rem', fontSize: '0.8rem', color: '#9ca3af' }}>Only club admins can modify facilities.</p>}
       </div>
 
-      {/* Members */}
-      <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-          <h2 className="section-title" style={{ marginBottom: 0 }}>Members</h2>
-          {isAdmin && (
-            <button
-              onClick={() => setShowAddMember(true)}
-              className="btn flex items-center gap-2"
-              style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', backgroundColor: 'var(--primary-color)', color: 'white' }}
-            >
-              <Plus size={14} /> Add Member (Gmail)
-            </button>
-          )}
-        </div>
-        
-        {/* Pending Invitations Section */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          {/* Invited Members (Show at top for visibility) */}
-          {pendingInvites.map(inv => (
-            <div key={inv.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderRadius: '4px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingLeft: '0.5rem' }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✉️</div>
-                <div>
-                  <div style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{inv.name} (Invited)</div>
-                  <div style={{ color: '#9ca3af', fontSize: '0.75rem', marginBottom: '0.2rem' }}>{inv.email}</div>
-                  {inv.ladder_id && (
-                    <div style={{ fontSize: '0.65rem', color: 'var(--primary-color)', fontWeight: 700 }}>
-                      ✓ INVITED TO LADDER
+      {/* Member Management Table */}
+      <div className="card" style={{ overflow: 'hidden' }}>
+        <h2 className="section-title" style={{ marginBottom: '1rem' }}>Members & Roles</h2>
+        <div style={{ overflowX: 'auto', border: '1px solid var(--border-color)', borderRadius: '8px' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '600px' }}>
+            <thead>
+              <tr style={{ backgroundColor: 'rgba(0,0,0,0.02)', borderBottom: '2px solid var(--border-color)' }}>
+                <th style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-light)' }}>Player</th>
+                <th style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-light)' }}>Email</th>
+                <th style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-light)' }}>Role / Status</th>
+                <th style={{ padding: '0.75rem 1rem', fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-light)', textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* Display Pending Invites at top */}
+              {pendingInvites.map(inv => (
+                <tr key={inv.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(56, 189, 248, 0.03)' }}>
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✉️</div>
+                      <span style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{inv.name} (Invited)</span>
                     </div>
-                  )}
-                </div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', paddingRight: '0.5rem' }}>
-                {!inv.ladder_id && isAdmin && (
-                  <button
-                    onClick={() => {
-                      setLadderTarget({ email: inv.email, name: inv.name, type: 'invite', reqId: inv.id });
-                      setShowLadderSelect(true);
-                    }}
-                    className="btn btn-outline"
-                    style={{ padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}
-                  >
-                    Add to Ladder
-                  </button>
-                )}
-                <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-color)', border: '1px solid var(--accent-color)', padding: '0.1rem 0.4rem', borderRadius: '4px', textTransform: 'uppercase' }}>
-                  Pending
-                </span>
-                {isAdmin && (
-                  <button
-                    onClick={() => cancelInvitation(inv.id)}
-                    style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600 }}
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {isAdmin && pendingInvites.length === 0 && (
-            <p style={{ fontSize: '0.85rem', color: '#9ca3af', fontStyle: 'italic', textAlign: 'center', margin: '0.5rem 0' }}>No pending invitations.</p>
-          )}
-
-          <div style={{ height: pendingInvites.length > 0 ? '0.5rem' : 0 }}></div>
-
-          {/* Active Members */}
-          {club.club_members?.map((m: any) => {
-            const p = m.profiles;
-            const displayName = p?.nickname || p?.first_name || (m.player_id === user?.id ? 'You' : m.player_id.slice(0, 8) + '…');
-            const isSelf = m.player_id === user?.id;
-            const isTargetAdmin = m.role === 'admin';
-            return (
-            <div key={m.player_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {p?.avatar_url
-                  ? <img src={p.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
-                  : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
-                <span style={{ color: 'var(--text-dark)' }}>{displayName}{isSelf ? ' (you)' : ''}</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <span style={{ 
-                  fontSize: '0.8rem', 
-                  fontWeight: 600, 
-                  color: isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)',
-                  textTransform: 'uppercase',
-                  textShadow: `0 0 5px ${isTargetAdmin ? 'rgba(255, 159, 28, 0.4)' : 'rgba(0, 242, 255, 0.4)'}`
-                }}>
-                  {m.role}
-                </span>
-
-                {m.status === 'inactive' && (
-                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', backgroundColor: '#fee2e2', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                    INACTIVE
-                  </span>
-                )}
-
-                {isAdmin && !isSelf && (
-                  <button
-                    onClick={() => handleToggleMemberStatus(m.player_id, m.status)}
-                    disabled={togglingStatusId === m.player_id}
-                    className="btn btn-outline"
-                    style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', borderColor: m.status === 'active' ? '#dc2626' : '#16a34a', color: m.status === 'active' ? '#dc2626' : '#16a34a' }}
-                  >
-                    {m.status === 'active' ? 'Deactivate' : 'Reactivate'}
-                  </button>
-                )}
-                {isAdmin && !isSelf && (
-                  <button
-                    onClick={async () => {
-                      const newRole = isTargetAdmin ? 'member' : 'admin';
-                      const action = isTargetAdmin ? 'remove admin rights from' : 'make admin';
-                      if (!confirm(`Are you sure you want to ${action} ${displayName}?`)) return;
-                      try {
-                        const { error } = await supabase
-                          .from('club_members')
-                          .update({ role: newRole })
-                          .eq('club_id', id)
-                          .eq('player_id', m.player_id);
-                        if (error) throw error;
-                        await loadClub();
-                      } catch (err: any) {
-                        alert(err.message || 'Failed to update role.');
-                      }
-                    }}
-                    style={{
-                      padding: '2px 8px', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 600,
-                      border: `1px solid ${isTargetAdmin ? '#fca5a5' : '#93c5fd'}`,
-                      backgroundColor: isTargetAdmin ? '#fef2f2' : '#eff6ff',
-                      color: isTargetAdmin ? '#dc2626' : '#2563eb',
-                      cursor: 'pointer', whiteSpace: 'nowrap',
-                    }}
-                  >
-                    {isTargetAdmin ? 'Remove Admin' : 'Make Admin'}
-                  </button>
-                )}
-              </div>
-            </div>
-            );
-          })}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', color: 'var(--text-light)', fontSize: '0.85rem' }}>
+                    {inv.email}
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-color)', border: '1px solid var(--accent-color)', padding: '0.1rem 0.4rem', borderRadius: '4px', textTransform: 'uppercase' }}>
+                      Pending Invite
+                    </span>
+                  </td>
+                  <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                      {!inv.ladder_id && isAdmin && (
+                        <button
+                          onClick={() => {
+                            setLadderTarget({ email: inv.email, name: inv.name, type: 'invite', reqId: inv.id });
+                            setShowLadderSelect(true);
+                          }}
+                          className="btn btn-outline"
+                          style={{ padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}
+                        >
+                          Add to Ladder
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button onClick={() => cancelInvitation(inv.id)} title="Cancel Invitation" style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '0.4rem' }}>
+                          <Trash2 size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              
+              {/* Active / Regular Members */}
+              {club.club_members?.map((m: any) => {
+                const p = m.profiles;
+                const displayName = p?.nickname || p?.first_name || (m.player_id === user?.id ? 'You' : m.player_id.slice(0, 8) + '…');
+                const isSelf = m.player_id === user?.id;
+                const isTargetAdmin = m.role === 'admin';
+                return (
+                  <tr key={m.player_id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                    <td style={{ padding: '0.75rem 1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        {p?.avatar_url
+                          ? <img src={p.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
+                          : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
+                        <span style={{ color: 'var(--text-dark)', fontWeight: 500 }}>{displayName}{isSelf && <span style={{ color: 'var(--text-light)', fontWeight: 400 }}> (you)</span>}</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', color: 'var(--text-light)', fontSize: '0.85rem' }}>
+                      {p?.email || '—'}
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{ 
+                          fontSize: '0.75rem', fontWeight: 600, color: isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)', textTransform: 'uppercase',
+                          padding: '0.1rem 0.4rem', border: `1px solid ${isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)'}`, borderRadius: '4px'
+                        }}>
+                          {m.role}
+                        </span>
+                        {m.status === 'inactive' && (
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', backgroundColor: '#fee2e2', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                            INACTIVE
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                        {isAdmin && !isSelf && (
+                          <select
+                            value=""
+                            onChange={async (e) => {
+                              const action = e.target.value;
+                              if (!action) return;
+                              if (action === 'toggle_admin') {
+                                const newRole = isTargetAdmin ? 'member' : 'admin';
+                                if (!confirm(`Change role to ${newRole}?`)) return;
+                                try {
+                                  await supabase.from('club_members').update({ role: newRole }).eq('club_id', id).eq('player_id', m.player_id);
+                                  loadClub();
+                                } catch (err) { alert('Failed to update role.'); }
+                              } else if (action === 'toggle_status') {
+                                handleToggleMemberStatus(m.player_id, m.status);
+                              }
+                            }}
+                            className="input-field"
+                            style={{ padding: '0.2rem 1.4rem 0.2rem 0.4rem', fontSize: '0.75rem', minHeight: 'auto', width: 'auto' }}
+                          >
+                            <option value="">⚙️ Manage</option>
+                            <option value="toggle_status">{m.status === 'active' ? 'Deactivate' : 'Reactivate'}</option>
+                            <option value="toggle_admin">{isTargetAdmin ? 'Remove Admin' : 'Make Admin'}</option>
+                          </select>
+                        )}
+                        {isAdmin && !isSelf && (
+                          <button onClick={() => handleRemoveMember(m.player_id)} title="Remove Player" style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '0.4rem' }}>
+                            <Trash2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              
+              {/* Inline Add Row (Admin Only) */}
+              {isAdmin && (
+                <tr style={{ backgroundColor: 'rgba(5, 150, 105, 0.03)' }}>
+                  <td colSpan={4} style={{ padding: 0 }}>
+                    <form onSubmit={handleInviteMember} style={{ display: 'flex', width: '100%', alignItems: 'center', padding: '0.5rem 1rem', gap: '0.75rem' }}>
+                      <Plus size={16} color="#059669" style={{ flexShrink: 0 }} />
+                      <input 
+                        type="text" required placeholder="Player Name" className="input-field" disabled={inviting}
+                        value={inviteName} onChange={e => setInviteName(e.target.value)}
+                        style={{ flex: 1, minHeight: '34px', fontSize: '0.85rem' }} 
+                      />
+                      <input 
+                        type="email" required placeholder="Email Address" className="input-field" disabled={inviting}
+                        value={inviteEmail} onChange={e => setInviteEmail(e.target.value)}
+                        style={{ flex: 1.5, minHeight: '34px', fontSize: '0.85rem' }} 
+                      />
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: 'var(--text-light)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={sendEmail} onChange={(e) => setSendEmail(e.target.checked)} disabled={inviting} />
+                        Send invite email
+                      </label>
+                      <button type="submit" disabled={inviting} className="btn" style={{ padding: '0.4rem 1rem', fontSize: '0.85rem', backgroundColor: '#059669', color: 'white', minHeight: '34px' }}>
+                        {inviting ? 'Adding...' : 'Add Player'}
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 

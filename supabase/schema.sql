@@ -177,8 +177,12 @@ declare
   k_factor int := 32;
   loser_id uuid;
   is_singles boolean;
+  win_diff int;
+  lose_diff int;
+  win_p1 uuid; win_p2 uuid;
+  lose_p1 uuid; lose_p2 uuid;
 begin
-  if new.status = 'completed' and (old.status is null or old.status != 'completed') then
+  if NEW.status = 'completed' and (TG_OP = 'INSERT' or (TG_OP = 'UPDATE' and (OLD.status is null or OLD.status != 'completed'))) then
     
     if new.challenger_team_id is not null then
       is_singles := false;
@@ -202,6 +206,9 @@ begin
 
     new_win_elo := win_elo + round(k_factor * (1.0 - expected_win));
     new_lose_elo := lose_elo + round(k_factor * (0.0 - expected_lose));
+    
+    win_diff := new_win_elo - win_elo;
+    lose_diff := new_lose_elo - lose_elo;
 
     if is_singles then
       update public.profiles set elo_rating = new_win_elo where id = new.winner_id;
@@ -213,6 +220,13 @@ begin
       -- Also update ladder_teams elo_rating
       update public.ladder_teams set elo_rating = new_win_elo where ladder_id = new.ladder_id and team_id = new.winner_team_id;
       update public.ladder_teams set elo_rating = new_lose_elo where ladder_id = new.ladder_id and team_id = loser_id;
+      
+      -- Also update individual player doubles_elo
+      SELECT player1_id, player2_id INTO win_p1, win_p2 FROM public.teams WHERE id = new.winner_team_id;
+      SELECT player1_id, player2_id INTO lose_p1, lose_p2 FROM public.teams WHERE id = loser_id;
+
+      UPDATE public.profiles SET doubles_elo = coalesce(doubles_elo, 800) + win_diff WHERE id IN (win_p1, win_p2);
+      UPDATE public.profiles SET doubles_elo = coalesce(doubles_elo, 800) + lose_diff WHERE id IN (lose_p1, lose_p2);
     end if;
 
   end if;
@@ -232,7 +246,7 @@ declare
   winner_current_rank INT;
   loser_current_rank INT;
 begin
-  if NEW.status <> 'completed' or OLD.status = 'completed' then
+  if NEW.status <> 'completed' or (TG_OP = 'UPDATE' and OLD.status = 'completed') then
     return NEW;
   end if;
 
@@ -283,11 +297,11 @@ end;
 $$ language plpgsql security definer;
 
 create trigger on_match_completed_elo
-  after update of status on public.matches
+  after insert or update on public.matches
   for each row execute procedure public.update_match_elo();
 
 create trigger on_match_completed_bump
-  after update of status on public.matches
+  after insert or update on public.matches
   for each row execute procedure public.handle_match_completion();
 
 -- 1. Clubs privacy
