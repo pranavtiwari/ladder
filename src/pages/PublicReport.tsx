@@ -97,7 +97,31 @@ export default function PublicReport() {
     <div style={{ padding: '0 1rem', maxWidth: '800px', margin: '0 auto', minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', flexDirection: 'column', color: 'white', alignItems: 'center' }}>
       <div style={{ textAlign: 'center', marginTop: '3rem', marginBottom: '3rem', width: '100%' }}>
         <h1 className="page-title" style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'white' }}>Daily Ladder Report</h1>
-        <p className="text-light">Recap of all action from {new Date(date!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</p>
+        <p className="text-light" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+          Recap of all action from {new Date(date!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          <button 
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href);
+              // Use a subtle non-blocking way to show success if possible, 
+              // but for now I'll just change the text/icon briefly or use alert
+              // Actually, I'll just use a small tooltip effect or alert for now to keep it simple as per user request
+              alert('Report link copied!');
+            }}
+            style={{ 
+              background: 'rgba(255,255,255,0.1)', 
+              border: 'none', 
+              borderRadius: '4px', 
+              padding: '2px 6px', 
+              color: 'white', 
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center'
+            }}
+            title="Copy report link"
+          >
+            <Share2 size={14} />
+          </button>
+        </p>
       </div>
 
       <div className="flex-col gap-4">

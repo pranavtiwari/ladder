@@ -123,7 +123,7 @@ export default function Dashboard() {
     try {
       const { data: playerLadders } = await supabase
         .from('ladder_players')
-        .select('current_rank, elo_rating, wins, losses, ladders(id, name, sport, type, club_id, clubs(name))')
+        .select('id, current_rank, elo_rating, wins, losses, ladder_id, ladders(id, name, sport, type, club_id, clubs(name))')
         .eq('player_id', user?.id);
 
       const { data: myTeams } = await supabase
@@ -137,7 +137,7 @@ export default function Dashboard() {
       if (teamIds.length > 0) {
         const { data: lt } = await supabase
           .from('ladder_teams')
-          .select('current_rank, elo_rating, wins, losses, team_id, ladder_id, ladders!inner(id, name, sport, type, club_id, clubs(name))')
+          .select('id, current_rank, elo_rating, wins, losses, team_id, ladder_id, ladders!inner(id, name, sport, type, club_id, clubs(name))')
           .in('team_id', teamIds);
         teamLadders = lt || [];
       }
@@ -145,6 +145,42 @@ export default function Dashboard() {
       const combined: any[] = [];
       const lpMap = new Map();
       (playerLadders || []).forEach((pl: any) => lpMap.set(pl.ladders?.id, pl.elo_rating));
+
+      // Fetch all participants for these ladders to calculate accurate display ranks
+      const ladderIds = Array.from(new Set([
+        ...(playerLadders || []).map(pl => pl.ladder_id),
+        ...teamLadders.map(tl => tl.ladder_id)
+      ]));
+
+      let allSinglesParticipants: any[] = [];
+      let allDoublesParticipants: any[] = [];
+
+      if (ladderIds.length > 0) {
+        const [ { data: sData }, { data: dData } ] = await Promise.all([
+          supabase.from('ladder_players').select('ladder_id, player_id, current_rank, wins, losses').in('ladder_id', ladderIds),
+          supabase.from('ladder_teams').select('ladder_id, team_id, current_rank, wins, losses').in('ladder_id', ladderIds)
+        ]);
+        allSinglesParticipants = sData || [];
+        allDoublesParticipants = dData || [];
+      }
+
+      const calculateDisplayRank = (participants: any[], myItem: any, isDoubles: boolean) => {
+        const ladderParticipants = participants.filter(p => p.ladder_id === myItem.ladder_id);
+        const played = ladderParticipants.filter(p => (p.wins ?? 0) + (p.losses ?? 0) > 0);
+        const unplayed = ladderParticipants.filter(p => (p.wins ?? 0) + (p.losses ?? 0) === 0);
+        
+        played.sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
+        unplayed.sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
+
+        const myPlayed = (myItem.wins ?? 0) + (myItem.losses ?? 0) > 0;
+        if (myPlayed) {
+          const idx = played.findIndex(p => isDoubles ? p.team_id === myItem.team_id : p.player_id === myItem.player_id);
+          return idx >= 0 ? idx + 1 : myItem.current_rank;
+        } else {
+          const idx = unplayed.findIndex(p => isDoubles ? p.team_id === myItem.team_id : p.player_id === myItem.player_id);
+          return played.length + (idx >= 0 ? idx + 1 : myItem.current_rank);
+        }
+      };
 
       (playerLadders || []).forEach((pl: any) => {
         if (pl.ladders?.type === 'singles' && pl.current_rank > 0) {
@@ -155,10 +191,12 @@ export default function Dashboard() {
             club_name: pl.ladders?.clubs?.name,
             club_id: pl.ladders?.club_id,
             type: 'singles',
+            display_rank: calculateDisplayRank(allSinglesParticipants, pl, false),
             current_rank: pl.current_rank,
             wins: pl.wins,
             losses: pl.losses,
-            elo_rating: pl.elo_rating
+            elo_rating: pl.elo_rating,
+            player_id: user?.id
           });
         }
       });
@@ -173,15 +211,17 @@ export default function Dashboard() {
             club_name: tl.ladders?.clubs?.name,
             club_id: tl.ladders?.club_id,
             type: 'doubles',
+            display_rank: calculateDisplayRank(allDoublesParticipants, tl, true),
             current_rank: tl.current_rank,
             wins: tl.wins,
             losses: tl.losses,
             elo_rating: indElo,
-            team_elo: tl.elo_rating
+            team_elo: tl.elo_rating,
+            team_id: tl.team_id
         });
       });
 
-      combined.sort((a, b) => a.current_rank - b.current_rank);
+      combined.sort((a, b) => a.display_rank - b.display_rank);
       setRanks(combined);
     } catch (err) {
       console.error(err);
@@ -550,7 +590,7 @@ export default function Dashboard() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--primary-color)', textShadow: '0 0 10px rgba(34, 197, 94, 0.4)' }}>#{r.current_rank}</div>
+                    <div style={{ fontWeight: 800, fontSize: '1.25rem', color: 'var(--primary-color)', textShadow: '0 0 10px rgba(34, 197, 94, 0.4)' }}>#{r.display_rank}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-light)' }}>{r.wins}W–{r.losses}L</div>
                   </div>
                 </Link>

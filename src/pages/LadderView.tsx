@@ -60,10 +60,16 @@ export default function LadderView() {
   const [sortMode, setSortMode] = useState<'rank' | 'elo'>('rank');
 
   const handleDownloadReport = () => {
-    const clubName = ladder?.clubs?.name?.replace(/\s+/g, '-') || 'club';
-    const ladderName = ladder?.name?.replace(/\s+/g, '-') || 'ladder';
-    const date = new Date().toISOString().split('T')[0];
-    window.open(`/reports/${clubName}/${ladderName}/${date}`, '_blank');
+    if (!ladder) return;
+    const clubName = ladder.clubs?.name || 'club';
+    const ladderName = ladder.name || 'ladder';
+    const dateStr = new Date().toISOString().split('T')[0];
+    const reportUrl = `${window.location.origin}/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
+    
+    // Copy link
+    navigator.clipboard.writeText(reportUrl);
+    
+    window.open(reportUrl, '_blank');
   };
 
   // Sync activeTeamId when entries/myTeams change (must be before any early returns)
@@ -1169,9 +1175,16 @@ export default function LadderView() {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
             {(() => {
-              const sortedEntries = sortMode === 'rank' 
-                ? entries 
-                : [...entries].sort((a, b) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800));
+              const played = entries.filter((e: any) => (e.wins ?? 0) + (e.losses ?? 0) > 0);
+              const unplayed = entries.filter((e: any) => (e.wins ?? 0) + (e.losses ?? 0) === 0);
+              
+              const sortFn = (a: any, b: any) => sortMode === 'rank'
+                ? (a.current_rank ?? 9999) - (b.current_rank ?? 9999)
+                : (b.elo_rating ?? 800) - (a.elo_rating ?? 800);
+                
+              played.sort(sortFn);
+              unplayed.sort(sortFn);
+              const sortedEntries = [...played, ...unplayed];
                 
               return sortedEntries.map((entry: any, i: number, arr: any[]) => {
               const isMe = isSingles ? entry.player_id === user?.id : (entry.teams?.player1_id === user?.id || entry.teams?.player2_id === user?.id);
@@ -1191,9 +1204,9 @@ export default function LadderView() {
               const hasActiveMatch = myMatches.some(m => (isSingles && (m.challenger_id === entry.player_id || m.defender_id === entry.player_id)) || (!isSingles && (m.challenger_team_id === entry.team_id || m.defender_team_id === entry.team_id)));
               const hasBorder = (i < entries.length - 1) || pendingJoinRequests.length > 0 || pendingInvites.length > 0;
 
-              const isUnplayed = !isSingles && ((entry.wins ?? 0) + (entry.losses ?? 0) === 0);
-              const prevIsPlayed = !isSingles && i > 0 && ((arr[i-1].wins ?? 0) + (arr[i-1].losses ?? 0) > 0);
-              const showUnplayedHeader = !isSingles && sortMode === 'rank' && isUnplayed && (i === 0 ? false : prevIsPlayed);
+              const isUnplayed = (entry.wins ?? 0) + (entry.losses ?? 0) === 0;
+              const prevIsPlayed = i > 0 && (arr[i-1].wins ?? 0) + (arr[i-1].losses ?? 0) > 0;
+              const showUnplayedHeader = !isSingles && isUnplayed && (i === 0 ? false : prevIsPlayed);
 
               return (
                 <React.Fragment key={entry.id}>
@@ -1283,12 +1296,12 @@ export default function LadderView() {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                               <input type="text" required value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="Team Name (e.g. The Giants)" className="input" style={{ width: '100%', fontSize: '0.85rem' }} />
                               <select required value={adminP1Id} onChange={e => setAdminP1Id(e.target.value)} className="input" style={{ width: '100%', fontSize: '0.85rem' }}>
-                                <option value="">Select first partner (Challenger)…</option>
+                                <option value="">Select first player…</option>
                                 {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
                                 <option value={user?.id}>You ({user?.user_metadata?.name || 'Admin'})</option>
                               </select>
                               <select required value={partner} onChange={e => setPartner(e.target.value)} className="input" style={{ width: '100%', fontSize: '0.85rem' }}>
-                                <option value="">Select second partner…</option>
+                                <option value="">Select second player…</option>
                                 {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
                               </select>
                               <button onClick={createTeam} disabled={creatingTeam || !teamName || !partner || !adminP1Id} className="btn" style={{ width: '100%', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '0.85rem' }}>

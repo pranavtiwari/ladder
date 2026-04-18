@@ -215,8 +215,16 @@ export default function LadderStandings() {
   }
 
   const getSortedStandings = () => {
-    if (sortMode === 'rank') return standings;
-    return [...standings].sort((a, b) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800));
+    const played = standings.filter(e => (e.wins ?? 0) + (e.losses ?? 0) > 0);
+    const unplayed = standings.filter(e => (e.wins ?? 0) + (e.losses ?? 0) === 0);
+    
+    const sortFn = (a: any, b: any) => sortMode === 'rank'
+      ? (a.current_rank ?? 9999) - (b.current_rank ?? 9999)
+      : (b.elo_rating ?? 800) - (a.elo_rating ?? 800);
+      
+    played.sort(sortFn);
+    unplayed.sort(sortFn);
+    return [...played, ...unplayed];
   };
 
   // Update which team is "active" in the left pane without re-fetching standings
@@ -332,7 +340,6 @@ export default function LadderStandings() {
     
     // Copy link
     navigator.clipboard.writeText(reportUrl);
-    alert('Shareable report link copied to clipboard!\nGenerating download...');
     
     // Trigger download (opens the public report page)
     window.open(reportUrl); 
@@ -589,7 +596,7 @@ export default function LadderStandings() {
                     
                     const isUnplayed = (e.wins ?? 0) + (e.losses ?? 0) === 0;
                     const prevIsPlayed = i > 0 && (arr[i-1].wins ?? 0) + (arr[i-1].losses ?? 0) > 0;
-                    const showUnplayedHeader = sortMode === 'rank' && isUnplayed && (i === 0 ? false : prevIsPlayed); // only separate if there is a played list above it
+                    const showUnplayedHeader = isUnplayed && (i === 0 ? false : prevIsPlayed); // only separate if there is a played list above it
 
                     return (
                       <React.Fragment key={e.id}>
