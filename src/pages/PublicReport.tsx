@@ -53,9 +53,14 @@ export default function PublicReport() {
 
   function getBanter(match: MatchReport) {
     const winner = match.winner_name;
-    const loser = match.winner_name === match.challenger_name ? match.defender_name : match.challenger_name;
+    // Determine the loser by exact match - avoid substring confusion
+    const loser = match.winner_name === match.challenger_name
+      ? match.defender_name
+      : match.challenger_name;
     const template = BANTER_TEMPLATES[Math.floor(Math.random() * BANTER_TEMPLATES.length)];
-    return template.replace('{winner}', winner).replace('{loser}', loser);
+    return template
+      .replace(/\{winner\}/g, winner)
+      .replace(/\{loser\}/g, loser);
   }
 
   function downloadText() {

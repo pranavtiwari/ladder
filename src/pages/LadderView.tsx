@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle, Pencil, Lock, Globe } from 'lucide-react';
+import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle, Pencil, Lock, Globe, Share2 } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -57,6 +57,15 @@ export default function LadderView() {
   const [processingAdd, setProcessingAdd] = useState(false);
   const [allClubTeams, setAllClubTeams] = useState<any[]>([]);
 
+  const [sortMode, setSortMode] = useState<'rank' | 'elo'>('rank');
+
+  const handleDownloadReport = () => {
+    const clubName = ladder?.clubs?.name?.replace(/\s+/g, '-') || 'club';
+    const ladderName = ladder?.name?.replace(/\s+/g, '-') || 'ladder';
+    const date = new Date().toISOString().split('T')[0];
+    window.open(`/reports/${clubName}/${ladderName}/${date}`, '_blank');
+  };
+
   // Sync activeTeamId when entries/myTeams change (must be before any early returns)
   useEffect(() => {
     const myTeamsInLadder = entries.filter((e: any) => myTeams.some((t: any) => t.id === e.team_id));
@@ -104,13 +113,28 @@ export default function LadderView() {
   const [recentMatches, setRecentMatches] = useState<any[]>([]);
   const [deletingMatchId, setDeletingMatchId] = useState<string | null>(null);
 
+  // Admin Match Approval
+  const [unapprovedMatches, setUnapprovedMatches] = useState<any[]>([]);
+  const [processingApprovalId, setProcessingApprovalId] = useState<string | null>(null);
+
+  // Doubles individual player rankings
+  const [doublesPlayers, setDoublesPlayers] = useState<any[]>([]);
+
   useEffect(() => {
     if (ladderId && user) load();
   }, [ladderId, user]);
 
   // Sort entries by DB current_rank and assign display rank
-  function sortByRank(data: any[]) {
-    // Fallback sort just in case, but DB should already return rank order
+  // For doubles: teams with wins+losses===0 are pushed below all teams that have played
+  function sortByRank(data: any[], isDoublesLadder = false) {
+    if (isDoublesLadder) {
+      const played = data.filter(e => (e.wins ?? 0) + (e.losses ?? 0) > 0);
+      const unplayed = data.filter(e => (e.wins ?? 0) + (e.losses ?? 0) === 0);
+      played.sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
+      unplayed.sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
+      const sorted = [...played, ...unplayed];
+      return sorted.map((entry, i) => ({ ...entry, display_rank: i + 1 }));
+    }
     const sorted = [...data].sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
     return sorted.map((entry, i) => ({ ...entry, display_rank: i + 1 }));
   }
@@ -120,7 +144,7 @@ export default function LadderView() {
     try {
       const { data: lad, error: lErr } = await supabase
         .from('ladders')
-        .select('*')
+        .select('*, clubs(name)')
         .eq('id', ladderId)
         .single();
       if (lErr) throw lErr;
@@ -152,10 +176,42 @@ export default function LadderView() {
           .from('ladder_teams')
           .select('*, teams(name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, doubles_elo), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, doubles_elo))')
           .eq('ladder_id', ladderId);
-        const sorted = sortByRank(teams || []);
+        const sorted = sortByRank(teams || [], true);
         setEntries(sorted);
 
-
+        // Also load individual player ELO board for doubles
+        const { data: dPlayers } = await supabase
+          .from('ladder_players')
+          .select('player_id, wins, losses, profile:profiles!ladder_players_player_id_fkey(doubles_elo, nickname, first_name)')
+          .eq('ladder_id', ladderId)
+          .gt('current_rank', 0);
+        if (dPlayers && dPlayers.length > 0) {
+          // Only include players who have played at least one match
+          const activePlayers = dPlayers.filter((p: any) => (p.wins ?? 0) + (p.losses ?? 0) > 0);
+          const sorted2 = [...activePlayers].sort((a: any, b: any) =>
+            (b.profile?.doubles_elo ?? 800) - (a.profile?.doubles_elo ?? 800)
+          );
+          setDoublesPlayers(sorted2);
+        } else {
+          // Fall back: extract players from team entries
+          const seen = new Set<string>();
+          const players: any[] = [];
+          for (const e of sorted) {
+            // Only include players from teams that have played at least one match
+            if ((e.wins ?? 0) + (e.losses ?? 0) > 0) {
+              for (const key of ['player1_id', 'player2_id']) {
+                const pid = e.teams?.[key];
+                const profileKey = key === 'player1_id' ? 'profiles_player1' : 'profiles_player2';
+                if (pid && !seen.has(pid)) {
+                  seen.add(pid);
+                  players.push({ player_id: pid, profile: e.teams?.[profileKey] });
+                }
+              }
+            }
+          }
+          players.sort((a: any, b: any) => (b.profile?.doubles_elo ?? 800) - (a.profile?.doubles_elo ?? 800));
+          setDoublesPlayers(players);
+        }
 
         // My teams in this club
         const { data: mt } = await supabase
@@ -228,7 +284,7 @@ export default function LadderView() {
       });
       setMyMatches(filteredMatches);
 
-      // Load pending requests
+      // Load pending requests & unapproved matches
       if (membership?.role === 'admin') {
         const { data: reqs } = await supabase
           .from('ladder_join_requests')
@@ -238,6 +294,21 @@ export default function LadderView() {
         
         const adminLadderReqs = (reqs || []).map((r: any) => ({ ...r, source: 'ladder' }));
         setJoinRequests([...adminLadderReqs, ...clubReqsMerged]);
+
+        const { data: unapprovedData } = await supabase
+          .from('matches')
+          .select(`
+            id, status, score_text, played_at, challenger_id, defender_id, winner_id,
+            challenger_team_id, defender_team_id, winner_team_id,
+            challenger:profiles!matches_challenger_id_fkey(nickname, first_name),
+            defender:profiles!matches_defender_id_fkey(nickname, first_name),
+            challenger_team:teams!matches_challenger_team_id_fkey(name),
+            defender_team:teams!matches_defender_team_id_fkey(name)
+          `)
+          .eq('ladder_id', ladderId)
+          .eq('status', 'score_submitted')
+          .order('created_at', { ascending: false });
+        setUnapprovedMatches(unapprovedData || []);
       }
 
       const { data: myReqs } = await supabase
@@ -339,14 +410,32 @@ export default function LadderView() {
         .single();
       if (error) throw error;
       
+      if (ladder.is_private && !isAdmin) {
+        const { error: reqErr } = await supabase.from('ladder_join_requests').insert({ ladder_id: ladderId, player_id: user?.id, team_id: data.id });
+        if (reqErr) throw reqErr;
+        setMyPendingRequest(true);
+        alert('Team created and join request sent!');
+      } else {
+        const nextRank = entries.length + (pendingJoinRequests.length || 0) + 1;
+        const { error: ladderErr } = await supabase
+          .from('ladder_teams')
+          .insert({ ladder_id: ladderId, team_id: data.id, current_rank: nextRank });
+        if (ladderErr) throw ladderErr;
+        
+        await supabase.from('ladder_players').insert([
+          { ladder_id: ladderId, player_id: partner1, current_rank: 0 },
+          { ladder_id: ladderId, player_id: partner2, current_rank: 0 }
+        ]);
+        alert('Team created and added to the ladder successfully!');
+      }
+
       if (!isAdmin) {
         setMyTeams((prev: any) => [...prev, data]);
         setSelectedTeam(data.id);
-      } else {
-        alert('Team created successfully. You can now join it to the ladder if desired, or it will be available for selection.');
       }
       
       setShowCreateTeam(false);
+      setParticipantToAdd('');
       setTeamName('');
       setPartner('');
       setAdminP1Id('');
@@ -538,6 +627,25 @@ export default function LadderView() {
       alert(err.message || 'Failed to delete match.');
     } finally {
       setDeletingMatchId(null);
+    }
+  }
+
+  async function handleAdminApproveRevert(matchId: string, action: 'approve' | 'revert') {
+    setProcessingApprovalId(matchId);
+    try {
+      if (action === 'approve') {
+        const { error } = await supabase.from('matches').update({ status: 'completed' }).eq('id', matchId);
+        if (error) throw error;
+        alert('Match score approved!');
+      } else {
+        const { error } = await supabase.from('matches').update({ status: 'accepted', score_text: null, winner_id: null, winner_team_id: null }).eq('id', matchId);
+        if (error) throw error;
+      }
+      await load();
+    } catch (err: any) {
+      alert(err.message || 'Action failed.');
+    } finally {
+      setProcessingApprovalId(null);
     }
   }
 
@@ -763,7 +871,7 @@ export default function LadderView() {
         <ArrowLeft size={16} /> Back to Club
       </Link>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
             <h1 className="page-title" style={{ color: 'var(--primary-color)', marginBottom: 0 }}>{ladder.name}</h1>
@@ -795,15 +903,43 @@ export default function LadderView() {
           {ladder.rules && <p style={{ color: 'var(--text-light)', marginTop: '0.5rem', fontSize: '0.875rem' }}>{ladder.rules}</p>}
         </div>
 
-        {isAdmin && (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
           <button
-            onClick={() => setShowAdminMatchModal(true)}
+            onClick={() => setSortMode(sortMode === 'rank' ? 'elo' : 'rank')}
             className="btn"
-            style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', backgroundColor: 'var(--orange-accent)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            style={{ 
+              padding: '0.4rem 0.85rem', 
+              fontSize: '0.82rem', 
+              backgroundColor: 'var(--surface-color)', 
+              border: '1px solid var(--primary-color)',
+              color: 'var(--primary-color)',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.4rem'
+            }}
           >
-            <Swords size={16} /> Add match result
+            <Trophy size={14} /> Sort: {sortMode === 'rank' ? 'Ladder Rank' : 'ELO Rating'}
           </button>
-        )}
+          
+          <button
+            onClick={handleDownloadReport}
+            className="btn"
+            style={{ padding: '0.45rem 1rem', fontSize: '0.82rem', backgroundColor: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+          >
+            <Share2 size={15} /> Report
+          </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => setShowAdminMatchModal(true)}
+              className="btn"
+              style={{ padding: '0.45rem 1rem', fontSize: '0.85rem', backgroundColor: 'var(--orange-accent)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            >
+              <Swords size={16} /> Add match result
+            </button>
+          )}
+        </div>
       </div>
 
       {isAdmin && joinRequests.length > 0 && (
@@ -838,6 +974,46 @@ export default function LadderView() {
                       style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#dc2626' }}
                       disabled={processingReqId === req.id}
                       onClick={() => handleRequest(req.id, false, req.player_id, req.team_id ?? null, req.source)}
+                    >
+                      <XCircle size={14} /> Reject
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {isAdmin && unapprovedMatches.length > 0 && (
+        <div className="card" style={{ border: '2px solid var(--primary-color)', backgroundColor: 'rgba(34, 197, 94, 0.05)' }}>
+          <h2 className="section-title" style={{ marginBottom: '1rem', color: 'var(--primary-color)' }}>
+            📝 Matches Pending Approval ({unapprovedMatches.length})
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            {unapprovedMatches.map(m => {
+              const challengerName = isSingles ? (m.challenger?.nickname || m.challenger?.first_name) : m.challenger_team?.name;
+              const defenderName = isSingles ? (m.defender?.nickname || m.defender?.first_name) : m.defender_team?.name;
+              return (
+                <div key={m.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', padding: '0.6rem 0', borderBottom: '1px solid rgba(34, 197, 94, 0.2)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                    <span style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{challengerName} vs {defenderName}</span>
+                    <span style={{ fontWeight: 800, color: 'var(--primary-color)' }}>{m.score_text}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      className="btn"
+                      style={{ backgroundColor: '#059669', color: 'white', padding: '0.3rem 0.8rem', fontSize: '0.8rem' }}
+                      disabled={processingApprovalId === m.id}
+                      onClick={() => handleAdminApproveRevert(m.id, 'approve')}
+                    >
+                      <CheckCircle size={14} /> Approve
+                    </button>
+                    <button
+                      className="btn btn-outline"
+                      style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', color: '#dc2626', borderColor: '#dc2626' }}
+                      disabled={processingApprovalId === m.id}
+                      onClick={() => handleAdminApproveRevert(m.id, 'revert')}
                     >
                       <XCircle size={14} /> Reject
                     </button>
@@ -919,84 +1095,68 @@ export default function LadderView() {
               </>
             )}
             {!alreadyJoined && (
-              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: '180px' }}>
-                  <select
-                    value={selectedTeam}
-                    onChange={e => handleTeamSelectChange(e.target.value)}
-                    style={{ flex: 1, padding: '0.45rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
-                  >
-                    <option value="">Select team…</option>
-                    {availableTeamsForJoin.map((t: any) => (
-                      <option key={t.id} value={t.id}>{t.name || 'Unnamed Team'}</option>
-                    ))}
-                    <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
-                  </select>
-                  {selectedTeam && selectedTeam !== CREATE_TEAM_VALUE && (
-                    <button
-                      onClick={() => {
-                        setEditTeamId(selectedTeam);
-                        setEditTeamName(availableTeamsForJoin.find(t => t.id === selectedTeam)?.name || '');
-                        setShowEditTeamModal(true);
-                      }}
-                      className="btn btn-outline"
-                      style={{ padding: '0.45rem 0.5rem' }}
-                      title="Edit team name"
-                    >
-                      <Pencil size={15} />
+              showCreateTeam ? (
+                <div style={{ flex: 1, border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.5)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Form a Doubles Team</span>
+                    <button type="button" onClick={() => setShowCreateTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={14} /></button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                    <input type="text" required value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="Team Name (e.g. The Giants)" className="input" style={{ width: '100%', fontSize: '0.85rem' }} />
+                    <select required value={partner} onChange={e => setPartner(e.target.value)} className="input" style={{ width: '100%', fontSize: '0.85rem' }}>
+                      <option value="">Select a partner…</option>
+                      {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
+                    </select>
+                    <button onClick={createTeam} disabled={creatingTeam || !teamName || !partner} className="btn" style={{ width: '100%', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '0.85rem' }}>
+                      {creatingTeam ? 'Creating…' : 'Create & Join Ladder'}
                     </button>
-                  )}
+                  </div>
                 </div>
-                <button
-                  className="btn"
-                  style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white' }}
-                  onClick={joinDoubles}
-                  disabled={joining || !selectedTeam || myPendingRequest}
-                >
-                  <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Join the ladder' : 'Join')}
-                </button>
-              </div>
+              ) : (
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap', flex: 1 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: 1, minWidth: '180px' }}>
+                    <select
+                      value={selectedTeam}
+                      onChange={e => handleTeamSelectChange(e.target.value)}
+                      style={{ flex: 1, padding: '0.45rem 0.75rem', border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '0.875rem' }}
+                    >
+                      <option value="">Select team…</option>
+                      {availableTeamsForJoin.map((t: any) => (
+                        <option key={t.id} value={t.id}>{t.name || 'Unnamed Team'}</option>
+                      ))}
+                      <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
+                    </select>
+                    {selectedTeam && selectedTeam !== CREATE_TEAM_VALUE && (
+                      <button
+                        onClick={() => {
+                          setEditTeamId(selectedTeam);
+                          setEditTeamName(availableTeamsForJoin.find(t => t.id === selectedTeam)?.name || '');
+                          setShowEditTeamModal(true);
+                        }}
+                        className="btn btn-outline"
+                        style={{ padding: '0.45rem 0.5rem' }}
+                        title="Edit team name"
+                      >
+                        <Pencil size={15} />
+                      </button>
+                    )}
+                  </div>
+                  <button
+                    className="btn"
+                    style={{ backgroundColor: myPendingRequest ? '#d1d5db' : 'var(--primary-color)', color: myPendingRequest ? '#4b5563' : 'white' }}
+                    onClick={joinDoubles}
+                    disabled={joining || !selectedTeam || myPendingRequest}
+                  >
+                    <UserPlus size={16} /> {myPendingRequest ? 'Pending Request...' : joining ? 'Joining…' : (ladder.is_private ? 'Join the ladder' : 'Join')}
+                  </button>
+                </div>
+              )
             )}
           </>
         )}
         {joinError && <p style={{ color: '#dc2626', fontSize: '0.8rem', margin: 0, width: '100%' }}>{joinError}</p>}
       </div>
 
-      {!isSingles && showCreateTeam && (
-        <div className="card" style={{ padding: '1.25rem' }}>
-          <form onSubmit={createTeam} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--text-dark)' }}>Form a Doubles Team</span>
-              <button type="button" onClick={() => setShowCreateTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}><X size={16} /></button>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Team Name</label>
-              <input type="text" required value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="e.g. The Giants" className="input" style={{ width: '100%' }} />
-            </div>
-            {isAdmin && (
-              <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Partner 1 (Admin override)</label>
-                <select required value={adminP1Id} onChange={e => setAdminP1Id(e.target.value)} className="input" style={{ width: '100%' }}>
-                  <option value="">Select first partner…</option>
-                  {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
-                  <option value={user?.id}>You ({user?.user_metadata?.name || 'Admin'})</option>
-                </select>
-              </div>
-            )}
-            <div>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-dark)', marginBottom: '0.25rem' }}>Partner</label>
-              <select required value={partner} onChange={e => setPartner(e.target.value)} className="input" style={{ width: '100%' }}>
-                <option value="">Select a partner…</option>
-                {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
-              </select>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem' }}>
-              <button type="button" className="btn btn-outline" onClick={() => setShowCreateTeam(false)}>Cancel</button>
-              <button type="submit" className="btn" style={{ backgroundColor: 'var(--primary-color)', color: 'white' }} disabled={creatingTeam}>{creatingTeam ? 'Creating…' : 'Create Team'}</button>
-            </div>
-          </form>
-        </div>
-      )}
 
       <div className="card">
         <h2 className="section-title" style={{ marginBottom: '1.25rem' }}>
@@ -1008,7 +1168,12 @@ export default function LadderView() {
           <p style={{ color: '#9ca3af', textAlign: 'center', padding: '1.5rem' }}>No one has joined yet. Be the first!</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-            {entries.map((entry: any, i: number) => {
+            {(() => {
+              const sortedEntries = sortMode === 'rank' 
+                ? entries 
+                : [...entries].sort((a, b) => (b.elo_rating ?? 800) - (a.elo_rating ?? 800));
+                
+              return sortedEntries.map((entry: any, i: number, arr: any[]) => {
               const isMe = isSingles ? entry.player_id === user?.id : (entry.teams?.player1_id === user?.id || entry.teams?.player2_id === user?.id);
               const displayName = isSingles ? (entry.profiles?.nickname || entry.profiles?.first_name || '—') : (entry.teams?.name || 'Unnamed Team');
               
@@ -1026,8 +1191,18 @@ export default function LadderView() {
               const hasActiveMatch = myMatches.some(m => (isSingles && (m.challenger_id === entry.player_id || m.defender_id === entry.player_id)) || (!isSingles && (m.challenger_team_id === entry.team_id || m.defender_team_id === entry.team_id)));
               const hasBorder = (i < entries.length - 1) || pendingJoinRequests.length > 0 || pendingInvites.length > 0;
 
+              const isUnplayed = !isSingles && ((entry.wins ?? 0) + (entry.losses ?? 0) === 0);
+              const prevIsPlayed = !isSingles && i > 0 && ((arr[i-1].wins ?? 0) + (arr[i-1].losses ?? 0) > 0);
+              const showUnplayedHeader = !isSingles && sortMode === 'rank' && isUnplayed && (i === 0 ? false : prevIsPlayed);
+
               return (
-                <div key={entry.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0.5rem', backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent', borderBottom: hasBorder ? '1px solid var(--border-color)' : 'none', borderRadius: '6px' }}>
+                <React.Fragment key={entry.id}>
+                  {showUnplayedHeader && (
+                    <div style={{ padding: '0.4rem 1.25rem', backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      Unplayed
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0.5rem', backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent', borderBottom: hasBorder ? '1px solid var(--border-color)' : 'none', borderRadius: '6px' }}>
                   <span style={{ minWidth: '2.5rem', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-dark)', textAlign: 'center' }}>{medal || `#${rank}`}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--primary-color)' : 'var(--text-dark)' }}>{displayName} {isMe ? '(you)' : ''}</div>
@@ -1046,8 +1221,9 @@ export default function LadderView() {
                     )}
                   </div>
                 </div>
+                </React.Fragment>
               );
-            })}
+            })})()}
             {pendingJoinRequests.map((req, i) => {
               const p = req.profiles;
               const name = req.team_id ? req.teams?.name : ([p?.first_name, p?.last_name].filter(Boolean).join(' ') || p?.nickname || 'Unknown user');
@@ -1098,13 +1274,39 @@ export default function LadderView() {
                           {clubMembers.filter(m => !entries.some(e => e.player_id === m.player_id)).map(m => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
                         </select>
                       ) : (
-                        <select className="input" value={participantToAdd} onChange={(e) => { if (e.target.value === CREATE_TEAM_VALUE) { setShowCreateTeam(true); setParticipantToAdd(''); } else { setParticipantToAdd(e.target.value); } }} style={{ width: '100%' }}>
-                          <option value="">Select team…</option>
-                          {allClubTeams?.filter(t => !entries.some(e => e.team_id === t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
-                        </select>
+                        showCreateTeam ? (
+                          <div style={{ border: '1px solid var(--border-color)', borderRadius: '6px', padding: '0.75rem', backgroundColor: 'rgba(255,255,255,0.5)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                              <span style={{ fontWeight: 600, fontSize: '0.85rem' }}>Form a Doubles Team</span>
+                              <button type="button" onClick={() => setShowCreateTeam(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={14} /></button>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              <input type="text" required value={teamName} onChange={e => setTeamName(e.target.value)} placeholder="Team Name (e.g. The Giants)" className="input" style={{ width: '100%', fontSize: '0.85rem' }} />
+                              <select required value={adminP1Id} onChange={e => setAdminP1Id(e.target.value)} className="input" style={{ width: '100%', fontSize: '0.85rem' }}>
+                                <option value="">Select first partner (Challenger)…</option>
+                                {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
+                                <option value={user?.id}>You ({user?.user_metadata?.name || 'Admin'})</option>
+                              </select>
+                              <select required value={partner} onChange={e => setPartner(e.target.value)} className="input" style={{ width: '100%', fontSize: '0.85rem' }}>
+                                <option value="">Select second partner…</option>
+                                {clubMembers.map((m: any) => <option key={m.player_id} value={m.player_id}>{m.profiles?.nickname || m.profiles?.first_name || 'Member'}</option>)}
+                              </select>
+                              <button onClick={createTeam} disabled={creatingTeam || !teamName || !partner || !adminP1Id} className="btn" style={{ width: '100%', backgroundColor: 'var(--primary-color)', color: 'white', fontSize: '0.85rem' }}>
+                                {creatingTeam ? 'Creating…' : 'Create & Add to Ladder'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <select className="input" value={participantToAdd} onChange={(e) => { if (e.target.value === CREATE_TEAM_VALUE) { setShowCreateTeam(true); setParticipantToAdd(''); } else { setParticipantToAdd(e.target.value); } }} style={{ width: '100%' }}>
+                            <option value="">Select team…</option>
+                            {allClubTeams?.filter(t => !entries.some(e => e.team_id === t.id)).map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                            <option value={CREATE_TEAM_VALUE}>＋ Form a new team…</option>
+                          </select>
+                        )
                       )}
-                      <button onClick={handleAddParticipant} disabled={!participantToAdd || processingAdd} className="btn" style={{ width: '100%', backgroundColor: 'var(--primary-color)', color: 'white' }}>{processingAdd ? 'Adding...' : isSingles ? 'Add player' : 'Add team'}</button>
+                      {!(showCreateTeam && !isSingles) && (
+                        <button onClick={handleAddParticipant} disabled={!participantToAdd || processingAdd} className="btn" style={{ width: '100%', backgroundColor: 'var(--primary-color)', color: 'white' }}>{processingAdd ? 'Adding...' : isSingles ? 'Add player' : 'Add team'}</button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1114,10 +1316,53 @@ export default function LadderView() {
         )}
       </div>
 
+      {/* ── Individual Player Rankings (doubles only) ── */}
+      {!isSingles && doublesPlayers.length > 0 && (
+        <div className="card">
+          <h2 className="section-title" style={{ marginBottom: '1.25rem' }}>
+            <span style={{ marginRight: '0.4rem' }}>🏅</span> Individual Player Rankings
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {doublesPlayers.map((p: any, i: number) => {
+              const profile = p.profile; // the joined profile object
+              const name = profile?.nickname || profile?.first_name || `Player ${i + 1}`;
+              const elo = profile?.doubles_elo ?? 800;
+              const isMe = p.player_id === user?.id;
+              const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+              return (
+                <div key={p.player_id} style={{
+                  display: 'flex', alignItems: 'center', gap: '0.75rem',
+                  padding: '0.65rem 0.5rem',
+                  borderBottom: i < doublesPlayers.length - 1 ? '1px solid var(--border-color)' : 'none',
+                  backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent',
+                  borderRadius: '6px',
+                }}>
+                  <span style={{ minWidth: '2.5rem', fontWeight: 700, fontSize: '1.1rem', color: 'var(--text-dark)', textAlign: 'center' }}>
+                    {medal || `#${i + 1}`}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: isMe ? 700 : 600, color: isMe ? 'var(--primary-color)' : 'var(--text-dark)' }}>
+                      {name} {isMe ? '(you)' : ''}
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-light)' }}>
+                      Doubles ELO: {elo}
+                    </div>
+                  </div>
+                  <span style={{ fontWeight: 800, fontSize: '1rem', color: elo >= 800 ? 'var(--primary-color)' : 'var(--orange-accent)' }}>
+                    {elo}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
           <h2 className="section-title" style={{ marginBottom: 0 }}>Recent Matches</h2>
         </div>
+
         {recentMatches.length === 0 ? (
           <p style={{ textAlign: 'center', color: 'var(--text-light)', padding: '1.5rem' }}>No matches yet.</p>
         ) : (
@@ -1170,8 +1415,12 @@ export default function LadderView() {
                    <label style={{ display: 'block', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Winner</label>
                    <select className="input" style={{ width: '100%' }} value={qrWinnerId} onChange={e => setQrWinnerId(e.target.value)}>
                       <option value="">Select winner...</option>
-                      <option value={isSingles ? user?.id : (activeTeamId || myTeamsInLadder[0]?.team_id)}>Me</option>
-                      <option value={isSingles ? quickRecordTarget.player_id : quickRecordTarget.team_id}>{isSingles ? quickRecordTarget.profiles?.nickname : quickRecordTarget.teams?.name}</option>
+                      <option value={isSingles ? user?.id : (activeTeamId || myTeamsInLadder[0]?.team_id)}>
+                        {isSingles ? 'Me' : (myTeamsInLadder.find((mt: any) => mt.team_id === (activeTeamId || myTeamsInLadder[0]?.team_id))?.teams?.name || 'My Team')}
+                      </option>
+                      <option value={isSingles ? quickRecordTarget.player_id : quickRecordTarget.team_id}>
+                        {isSingles ? (quickRecordTarget.profiles?.nickname || quickRecordTarget.profiles?.first_name) : quickRecordTarget.teams?.name}
+                      </option>
                    </select>
                 </div>
                 <div>

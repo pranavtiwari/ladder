@@ -1,0 +1,13 @@
+1. In /ladder page, where it shows "As AbhiPT", the drop down is to the right of the text. Bring all drop down icons to the left of text.
+2. In the /matches page, for all pending confirmation matches, if the viewer is admin/owner of the ladder/club, show another button where he admin/owner can accept the reported match outcome.
+3. In doubles ladder, show another sorted list of players based on their individual performance.
+4. In member list, an invited player shows up as (invited). If I add the player to a team, and add the team to a ladder, the person appears twice in the member list. Once as (invited) and once again later. For example:Vishal (vishybiz@gmail.com) and Vishal (without any email id). This should NOT repeat.
+
+5. While recording a doubles match between one of my teams and Opponents X, the winner selection drop down should show team names. Right now it shows "me" and "opponent". This is confusing. It should show team names.
+6. Daily ladder report should show team names for the two contestants for each match. Right now, it's showing something weird. E.g. Peets vs ArunJags. Peets is an individual player. Show the team name that won. Even snippet is wrong at times. E.g. "PeetiPaul skunked Peets!", where Peets is a part of PeetiePaul. 
+7. In individual ELO scores, don't show players who has not played a match yet. Similarly, in doubles ladder, apply this constraint in ranking computations: any team that is yet to play a match would be below the lowest ranked team which has played some matches.
+
+8. on fullpage ladder view, allow sorting by ELO; Also allow "report" link; 
+9. Use consistem terminology. The same action is "Add match result" in one place, and "Record Unscheduled" at another. The former sounds better.
+
+

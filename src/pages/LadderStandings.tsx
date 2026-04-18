@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
@@ -121,6 +121,19 @@ export default function LadderStandings() {
     }
   }
 
+  function sortByRank(data: any[], isDoublesLadder = false) {
+    if (isDoublesLadder) {
+      const played = data.filter(e => (e.wins ?? 0) + (e.losses ?? 0) > 0);
+      const unplayed = data.filter(e => (e.wins ?? 0) + (e.losses ?? 0) === 0);
+      played.sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
+      unplayed.sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
+      const sorted = [...played, ...unplayed];
+      return sorted.map((entry, i) => ({ ...entry, display_rank: i + 1 }));
+    }
+    const sorted = [...data].sort((a, b) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999));
+    return sorted.map((entry, i) => ({ ...entry, display_rank: i + 1 }));
+  }
+
   async function selectLadder(group: GroupedLadder) {
     if (!group || !group.ladders) return;
     setSelected(group);
@@ -143,8 +156,7 @@ export default function LadderStandings() {
           .select('*, profiles(id, nickname, first_name, avatar_url)')
           .eq('ladder_id', group.ladder_id)
           .gt('current_rank', 0);
-        const sorted = [...(data || [])].sort((a: any, b: any) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999))
-          .map((e: any, i: number) => ({ ...e, display_rank: i + 1 }));
+        const sorted = sortByRank(data || [], false);
         setStandings(sorted);
         const me = sorted.find((e: any) => e.player_id === user?.id);
         setMyRank(me?.display_rank ?? null);
@@ -153,8 +165,7 @@ export default function LadderStandings() {
           .from('ladder_teams')
           .select('*, teams(id, name, player1_id, player2_id, profiles_player1:profiles!teams_player1_id_fkey(nickname, first_name, avatar_url, elo_rating), profiles_player2:profiles!teams_player2_id_fkey(nickname, first_name, avatar_url, elo_rating))')
           .eq('ladder_id', group.ladder_id);
-        const sortedByRank = [...(data || [])].sort((a: any, b: any) => (a.current_rank ?? 9999) - (b.current_rank ?? 9999))
-          .map((e: any, i: number) => ({ ...e, display_rank: i + 1 }));
+        const sortedByRank = sortByRank(data || [], true);
         setStandings(sortedByRank);
         const activeTeamEntry = sortedByRank.find((e: any) => e.team_id === group.activeTeamId);
         setMyRank(activeTeamEntry?.display_rank ?? null);
@@ -513,7 +524,7 @@ export default function LadderStandings() {
                     className="btn btn-outline"
                     style={{ padding: '0.3rem 0.8rem', fontSize: '0.8rem', fontWeight: 600 }}
                   >
-                    Record Unscheduled
+                    Add match result
                   </button>
                 </div>
 
@@ -565,7 +576,7 @@ export default function LadderStandings() {
                     );
                   })
                 ) : (
-                  getSortedStandings().map((e: any, i: number) => {
+                  getSortedStandings().map((e: any, i: number, arr: any[]) => {
                     const myTeamIds = new Set(selected.entries.map((en: any) => en.team_id));
                     const isMe = myTeamIds.has(e.team_id);
                     const teamName = e.teams?.name || 'Unnamed Team';
@@ -575,8 +586,19 @@ export default function LadderStandings() {
                     const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
                     // Can challenge ±2 ranks
                     const canChallenge = !isMe && myRank !== null && Math.abs(rank - myRank) <= 2 && rank !== myRank;
+                    
+                    const isUnplayed = (e.wins ?? 0) + (e.losses ?? 0) === 0;
+                    const prevIsPlayed = i > 0 && (arr[i-1].wins ?? 0) + (arr[i-1].losses ?? 0) > 0;
+                    const showUnplayedHeader = isUnplayed && (i === 0 ? false : prevIsPlayed); // only separate if there is a played list above it
+
                     return (
-                      <div key={e.id} style={{
+                      <React.Fragment key={e.id}>
+                        {showUnplayedHeader && (
+                          <div style={{ padding: '0.4rem 1.25rem', backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                            Yet to play
+                          </div>
+                        )}
+                        <div style={{
                         display: 'flex', alignItems: 'center', gap: '0.75rem',
                         padding: '0.65rem 1.25rem',
                         backgroundColor: isMe ? 'rgba(34, 197, 94, 0.12)' : 'transparent',
@@ -607,6 +629,7 @@ export default function LadderStandings() {
                           </button>
                         )}
                       </div>
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -672,7 +695,7 @@ export default function LadderStandings() {
             <button onClick={() => setShowUnscheduled(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-light)' }}>
               <X size={20} />
             </button>
-            <h2 style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--text-dark)', marginBottom: '1rem' }}>Record Unscheduled Match</h2>
+            <h2 style={{ fontWeight: 700, fontSize: '1.2rem', color: 'var(--text-dark)', marginBottom: '1rem' }}>Add Match Result</h2>
             
             {isAdmin ? (
                <>

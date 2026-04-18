@@ -254,6 +254,16 @@ export default function MatchHistory() {
                       </button>
                     </div>
                   )}
+                  {adminClubs.includes(match.ladders?.club_id) && match.status === 'score_submitted' && (
+                    <button
+                      onClick={() => confirmScore(match)}
+                      className="btn btn-outline"
+                      title="Force approve as Club Admin"
+                      style={{ padding: '0.3rem 0.8rem', borderColor: '#059669', color: '#059669', fontSize: '0.8rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }}
+                    >
+                      <CheckCircle size={13} /> Admin Accept
+                    </button>
+                  )}
                   {adminClubs.includes(match.ladders?.club_id) && (
                     <button
                       onClick={() => handleDeleteMatch(match)}

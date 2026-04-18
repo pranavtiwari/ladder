@@ -54,6 +54,10 @@ export default function ClubView() {
   const [inviting, setInviting] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
 
+  // List Expand States
+  const [expandJoinReqs, setExpandJoinReqs] = useState(false);
+  const [expandMembers, setExpandMembers] = useState(false);
+  const [expandLadders, setExpandLadders] = useState(false);
 
   // Privacy
   const [togglingPrivacy, setTogglingPrivacy] = useState(false);
@@ -72,7 +76,7 @@ export default function ClubView() {
     try {
       const { data, error } = await supabase
         .from('clubs')
-        .select(`*, club_members(player_id, role, status, profiles(nickname, first_name, last_name, avatar_url))`)
+        .select(`*, club_members(player_id, role, status, profiles(nickname, first_name, last_name, avatar_url, email))`)
         .eq('id', id)
         .single();
       if (error) throw error;
@@ -430,7 +434,7 @@ export default function ClubView() {
             ⏳ Pending Join Requests ({joinRequests.length})
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
-            {joinRequests.map(req => {
+            {(expandJoinReqs ? joinRequests : joinRequests.slice(0, 2)).map(req => {
               const p = req.profiles;
               const name = [p?.first_name, p?.last_name].filter(Boolean).join(' ') || 'Unknown user';
               return (
@@ -483,6 +487,14 @@ export default function ClubView() {
               );
             })}
           </div>
+          {joinRequests.length > 2 && (
+            <button
+              onClick={() => setExpandJoinReqs(!expandJoinReqs)}
+              style={{ width: '100%', marginTop: '0.75rem', padding: '0.5rem', border: '1px dashed #d97706', borderRadius: '6px', background: 'none', cursor: 'pointer', color: '#92400e', fontSize: '0.85rem', fontWeight: 600 }}
+            >
+              {expandJoinReqs ? 'Show Less' : `Show All Requests (${joinRequests.length})`}
+            </button>
+          )}
         </div>
       )}
 
@@ -523,118 +535,137 @@ export default function ClubView() {
               </tr>
             </thead>
             <tbody>
-              {/* Display Pending Invites at top */}
-              {pendingInvites.map(inv => (
-                <tr key={inv.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(56, 189, 248, 0.03)' }}>
-                  <td style={{ padding: '0.75rem 1rem' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✉️</div>
-                      <span style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{inv.name} (Invited)</span>
-                    </div>
-                  </td>
-                  <td style={{ padding: '0.75rem 1rem', color: 'var(--text-light)', fontSize: '0.85rem' }}>
-                    {inv.email}
-                  </td>
-                  <td style={{ padding: '0.75rem 1rem' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-color)', border: '1px solid var(--accent-color)', padding: '0.1rem 0.4rem', borderRadius: '4px', textTransform: 'uppercase' }}>
-                      Pending Invite
-                    </span>
-                  </td>
-                  <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                    <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
-                      {!inv.ladder_id && isAdmin && (
-                        <button
-                          onClick={() => {
-                            setLadderTarget({ email: inv.email, name: inv.name, type: 'invite', reqId: inv.id });
-                            setShowLadderSelect(true);
-                          }}
-                          className="btn btn-outline"
-                          style={{ padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}
-                        >
-                          Add to Ladder
-                        </button>
-                      )}
-                      {isAdmin && (
-                        <button onClick={() => cancelInvitation(inv.id)} title="Cancel Invitation" style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '0.4rem' }}>
-                          <Trash2 size={16} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              
-              {/* Active / Regular Members */}
-              {club.club_members?.map((m: any) => {
-                const p = m.profiles;
-                const displayName = p?.nickname || p?.first_name || (m.player_id === user?.id ? 'You' : m.player_id.slice(0, 8) + '…');
-                const isSelf = m.player_id === user?.id;
-                const isTargetAdmin = m.role === 'admin';
-                return (
-                  <tr key={m.player_id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {p?.avatar_url
-                          ? <img src={p.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
-                          : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
-                        <span style={{ color: 'var(--text-dark)', fontWeight: 500 }}>{displayName}{isSelf && <span style={{ color: 'var(--text-light)', fontWeight: 400 }}> (you)</span>}</span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', color: 'var(--text-light)', fontSize: '0.85rem' }}>
-                      {p?.email || '—'}
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                        <span style={{ 
-                          fontSize: '0.75rem', fontWeight: 600, color: isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)', textTransform: 'uppercase',
-                          padding: '0.1rem 0.4rem', border: `1px solid ${isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)'}`, borderRadius: '4px'
-                        }}>
-                          {m.role}
-                        </span>
-                        {m.status === 'inactive' && (
-                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', backgroundColor: '#fee2e2', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
-                            INACTIVE
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
-                        {isAdmin && !isSelf && (
-                          <select
-                            value=""
-                            onChange={async (e) => {
-                              const action = e.target.value;
-                              if (!action) return;
-                              if (action === 'toggle_admin') {
-                                const newRole = isTargetAdmin ? 'member' : 'admin';
-                                if (!confirm(`Change role to ${newRole}?`)) return;
-                                try {
-                                  await supabase.from('club_members').update({ role: newRole }).eq('club_id', id).eq('player_id', m.player_id);
-                                  loadClub();
-                                } catch (err) { alert('Failed to update role.'); }
-                              } else if (action === 'toggle_status') {
-                                handleToggleMemberStatus(m.player_id, m.status);
-                              }
-                            }}
-                            className="input-field"
-                            style={{ padding: '0.2rem 1.4rem 0.2rem 0.4rem', fontSize: '0.75rem', minHeight: 'auto', width: 'auto' }}
-                          >
-                            <option value="">⚙️ Manage</option>
-                            <option value="toggle_status">{m.status === 'active' ? 'Deactivate' : 'Reactivate'}</option>
-                            <option value="toggle_admin">{isTargetAdmin ? 'Remove Admin' : 'Make Admin'}</option>
-                          </select>
-                        )}
-                        {isAdmin && !isSelf && (
-                          <button onClick={() => handleRemoveMember(m.player_id)} title="Remove Player" style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '0.4rem' }}>
-                            <Trash2 size={16} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
+              {/* Combine Invites and Members to slice top 2 */}
+              {(() => {
+                const memberEmails = new Set(
+                  (club.club_members || [])
+                    .map((m: any) => m.profiles?.email?.toLowerCase())
+                    .filter(Boolean)
                 );
-              })}
+                const deduplicatedInvites = pendingInvites.filter(
+                  (inv: any) => !memberEmails.has(inv.email?.toLowerCase())
+                );
+                const allMemberRows = [
+                  ...deduplicatedInvites.map((inv: any) => ({ type: 'invite', data: inv })),
+                  ...(club.club_members || []).map((m: any) => ({ type: 'member', data: m }))
+                ];
+                const displayedRows = expandMembers ? allMemberRows : allMemberRows.slice(0, 2);
+
+                return displayedRows.map((row) => {
+                  if (row.type === 'invite') {
+                    const inv = row.data;
+                    return (
+                      <tr key={inv.id} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'rgba(56, 189, 248, 0.03)' }}>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>✉️</div>
+                            <span style={{ fontWeight: 600, color: 'var(--text-dark)' }}>{inv.name} (Invited)</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', color: 'var(--text-light)', fontSize: '0.85rem' }}>
+                          {inv.email}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--accent-color)', border: '1px solid var(--accent-color)', padding: '0.1rem 0.4rem', borderRadius: '4px', textTransform: 'uppercase' }}>
+                            Pending Invite
+                          </span>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                            {!inv.ladder_id && isAdmin && (
+                              <button
+                                onClick={() => {
+                                  setLadderTarget({ email: inv.email, name: inv.name, type: 'invite', reqId: inv.id });
+                                  setShowLadderSelect(true);
+                                }}
+                                className="btn btn-outline"
+                                style={{ padding: '0.2rem 0.6rem', fontSize: '0.7rem', color: 'var(--primary-color)', borderColor: 'var(--primary-color)' }}
+                              >
+                                Add to Ladder
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button onClick={() => cancelInvitation(inv.id)} title="Cancel Invitation" style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '0.4rem' }}>
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  } else {
+                    const m = row.data;
+                    const p = m.profiles;
+                    const displayName = p?.nickname || p?.first_name || (m.player_id === user?.id ? 'You' : m.player_id.slice(0, 8) + '…');
+                    const isSelf = m.player_id === user?.id;
+                    const isTargetAdmin = m.role === 'admin';
+                    return (
+                      <tr key={m.player_id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            {p?.avatar_url
+                              ? <img src={p.avatar_url} alt="" style={{ width: 28, height: 28, borderRadius: '50%' }} />
+                              : <div style={{ width: 28, height: 28, borderRadius: '50%', backgroundColor: '#e5e7eb' }} />}
+                            <span style={{ color: 'var(--text-dark)', fontWeight: 500 }}>{displayName}{isSelf && <span style={{ color: 'var(--text-light)', fontWeight: 400 }}> (you)</span>}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', color: 'var(--text-light)', fontSize: '0.85rem' }}>
+                          {p?.email || '—'}
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                            <span style={{ 
+                              fontSize: '0.75rem', fontWeight: 600, color: isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)', textTransform: 'uppercase',
+                              padding: '0.1rem 0.4rem', border: `1px solid ${isTargetAdmin ? 'var(--orange-accent)' : 'var(--accent-color)'}`, borderRadius: '4px'
+                            }}>
+                              {m.role}
+                            </span>
+                            {m.status === 'inactive' && (
+                              <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626', backgroundColor: '#fee2e2', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>
+                                INACTIVE
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', alignItems: 'center' }}>
+                            {isAdmin && !isSelf && (
+                              <select
+                                value=""
+                                onChange={async (e) => {
+                                  const action = e.target.value;
+                                  if (!action) return;
+                                  if (action === 'toggle_admin') {
+                                    const newRole = isTargetAdmin ? 'member' : 'admin';
+                                    if (!confirm(`Change role to ${newRole}?`)) return;
+                                    try {
+                                      await supabase.from('club_members').update({ role: newRole }).eq('club_id', id).eq('player_id', m.player_id);
+                                      loadClub();
+                                    } catch (err) { alert('Failed to update role.'); }
+                                  } else if (action === 'toggle_status') {
+                                    handleToggleMemberStatus(m.player_id, m.status);
+                                  }
+                                }}
+                                className="input-field"
+                                style={{ padding: '0.2rem 1.4rem 0.2rem 0.4rem', fontSize: '0.75rem', minHeight: 'auto', width: 'auto' }}
+                              >
+                                <option value="">⚙️ Manage</option>
+                                <option value="toggle_status">{m.status === 'active' ? 'Deactivate' : 'Reactivate'}</option>
+                                <option value="toggle_admin">{isTargetAdmin ? 'Remove Admin' : 'Make Admin'}</option>
+                              </select>
+                            )}
+                            {isAdmin && !isSelf && (
+                              <button onClick={() => handleRemoveMember(m.player_id)} title="Remove Player" style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', padding: '0.4rem' }}>
+                                <Trash2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                });
+              })()}
               
               {/* Inline Add Row (Admin Only) */}
               {isAdmin && (
@@ -666,6 +697,14 @@ export default function ClubView() {
             </tbody>
           </table>
         </div>
+        {(pendingInvites.length + (club.club_members?.length || 0)) > 2 && (
+          <button
+            onClick={() => setExpandMembers(!expandMembers)}
+            style={{ width: '100%', marginTop: '0.75rem', padding: '0.5rem', border: '1px dashed var(--border-color)', borderRadius: '6px', background: 'none', cursor: 'pointer', color: 'var(--text-light)', fontSize: '0.85rem', fontWeight: 600 }}
+          >
+            {expandMembers ? 'Show Less' : `Show All Members (${pendingInvites.length + (club.club_members?.length || 0)})`}
+          </button>
+        )}
       </div>
 
       {/* Ladders */}
@@ -735,62 +774,72 @@ export default function ClubView() {
             {isAdmin ? 'No ladders yet. Create one above to get players competing!' : 'No ladders have been created yet.'}
           </p>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
-            {ladders.map((l: any) => (
-              <div key={l.id} style={{
-                padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)',
-                backgroundColor: 'rgba(255, 255, 255, 0.02)', transition: 'box-shadow 0.15s',
-                display: 'flex', flexDirection: 'column', gap: '0.4rem',
-              }}
-                onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)')}
-                onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
-              >
-                {/* Ladder name row — inline edit or link */}
-                {renamingLadderId === l.id ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <input
-                      autoFocus
-                      value={ladderNameDraft}
-                      onChange={e => setLadderNameDraft(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') saveLadderName(l.id); if (e.key === 'Escape') setRenamingLadderId(null); }}
-                      style={{ flex: 1, fontSize: '0.9rem', fontWeight: 700, border: '1px solid var(--primary-color)', borderRadius: '4px', padding: '0.15rem 0.4rem' }}
-                    />
-                    <button onClick={() => saveLadderName(l.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#059669' }}><Save size={14} /></button>
-                    <button onClick={() => setRenamingLadderId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={14} /></button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                    <Link
-                      to={`/clubs/${id}/ladders/${l.id}`}
-                      style={{ fontWeight: 700, color: 'var(--text-dark)', fontSize: '0.95rem', textDecoration: 'none', flex: 1 }}
-                    >
-                      {l.name}
-                    </Link>
-                    {isAdmin && (
-                      <button
-                        onClick={() => { setLadderNameDraft(l.name); setRenamingLadderId(l.id); }}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', padding: '1px' }}
-                        title="Rename ladder"
+          <div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
+              {(expandLadders ? ladders : ladders.slice(0, 2)).map((l: any) => (
+                <div key={l.id} style={{
+                  padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)',
+                  backgroundColor: 'rgba(255, 255, 255, 0.02)', transition: 'box-shadow 0.15s',
+                  display: 'flex', flexDirection: 'column', gap: '0.4rem',
+                }}
+                  onMouseEnter={e => (e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)')}
+                  onMouseLeave={e => (e.currentTarget.style.boxShadow = 'none')}
+                >
+                  {/* Ladder name row — inline edit or link */}
+                  {renamingLadderId === l.id ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <input
+                        autoFocus
+                        value={ladderNameDraft}
+                        onChange={e => setLadderNameDraft(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') saveLadderName(l.id); if (e.key === 'Escape') setRenamingLadderId(null); }}
+                        style={{ flex: 1, fontSize: '0.9rem', fontWeight: 700, border: '1px solid var(--primary-color)', borderRadius: '4px', padding: '0.15rem 0.4rem' }}
+                      />
+                      <button onClick={() => saveLadderName(l.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#059669' }}><Save size={14} /></button>
+                      <button onClick={() => setRenamingLadderId(null)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af' }}><X size={14} /></button>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                      <Link
+                        to={`/clubs/${id}/ladders/${l.id}`}
+                        style={{ fontWeight: 700, color: 'var(--text-dark)', fontSize: '0.95rem', textDecoration: 'none', flex: 1 }}
                       >
-                        <Pencil size={12} />
-                      </button>
-                    )}
+                        {l.name}
+                      </Link>
+                      {isAdmin && (
+                        <button
+                          onClick={() => { setLadderNameDraft(l.name); setRenamingLadderId(l.id); }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', padding: '1px' }}
+                          title="Rename ladder"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
+                    <span className="badge-neon-green">{SPORT_ICONS[l.sport]} {l.sport}</span>
+                    <span style={{ 
+                      fontSize: '0.78rem', 
+                      fontWeight: 600, 
+                      color: 'var(--text-light)',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.02em'
+                    }}>
+                      {l.type === 'singles' ? '👤 Singles' : '👥 Doubles'}
+                    </span>
                   </div>
-                )}
-                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', marginTop: '0.2rem' }}>
-                  <span className="badge-neon-green">{SPORT_ICONS[l.sport]} {l.sport}</span>
-                  <span style={{ 
-                    fontSize: '0.78rem', 
-                    fontWeight: 600, 
-                    color: 'var(--text-light)',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.02em'
-                  }}>
-                    {l.type === 'singles' ? '👤 Singles' : '👥 Doubles'}
-                  </span>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            {ladders.length > 2 && (
+              <button
+                onClick={() => setExpandLadders(!expandLadders)}
+                style={{ width: '100%', marginTop: '0.75rem', padding: '0.5rem', border: '1px dashed var(--border-color)', borderRadius: '6px', background: 'none', cursor: 'pointer', color: 'var(--text-light)', fontSize: '0.85rem', fontWeight: 600 }}
+              >
+                {expandLadders ? 'Show Less' : `Show All Ladders (${ladders.length})`}
+              </button>
+            )}
           </div>
         )}
       </div>
