@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { getOrCreateShortLink } from '../lib/urlUtils';
-import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle, Pencil, Lock, Globe, Share2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle, Pencil, Lock, Globe, Share2, Loader2, Trash2 } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -14,6 +14,7 @@ const CREATE_TEAM_VALUE = '__create_team__';
 
 export default function LadderView() {
   const { id, ladderId } = useParams<{ id: string; ladderId: string }>();
+  const navigate = useNavigate();
   const { user } = useAuth();
 
   const [ladder, setLadder] = useState<any>(null);
@@ -122,6 +123,7 @@ export default function LadderView() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editName, setEditName] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingLadder, setDeletingLadder] = useState(false);
 
   // Privacy info modal (visible to all)
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
@@ -165,6 +167,10 @@ export default function LadderView() {
   async function load() {
     setLoading(true);
     try {
+      // Automatically accept any match reported > 24 hours ago
+      const { error: rpcErr } = await supabase.rpc('accept_stale_matches');
+      if (rpcErr) console.error(rpcErr);
+
       const { data: lad, error: lErr } = await supabase
         .from('ladders')
         .select('*, clubs(name)')
@@ -562,17 +568,49 @@ export default function LadderView() {
           throw new Error('Cannot record a match between teams with overlapping players.');
         }
       }
+      let autoAccept = false;
+
+      try {
+        let defenderIds: string[] = [];
+        if (isSingles) {
+          if (quickRecordTarget.player_id) defenderIds.push(quickRecordTarget.player_id);
+        } else {
+          if (quickRecordTarget.teams?.player1_id) defenderIds.push(quickRecordTarget.teams.player1_id);
+          if (quickRecordTarget.teams?.player2_id) defenderIds.push(quickRecordTarget.teams.player2_id);
+        }
+
+        if (defenderIds.length > 0) {
+          // get emails of these profiles
+          const { data: profs } = await supabase.from('profiles').select('email').in('id', defenderIds);
+          if (profs && profs.length > 0) {
+            const emails = profs.map((p: any) => p.email).filter(Boolean);
+            if (emails.length > 0) {
+               const { data: invs } = await supabase.from('member_invitations').select('id').in('email', emails).eq('club_id', id);
+               if (invs && invs.length > 0) {
+                 autoAccept = true;
+               }
+            }
+          }
+        }
+      } catch (e) {
+         console.error('Failed to check for auto-accept', e);
+      }
+
       const payload: any = {
         ladder_id: ladderId,
         challenger_id: user?.id,
         defender_id: isSingles ? quickRecordTarget.player_id : null,
         challenger_team_id: isSingles ? null : (activeTeamId || myTeamsInLadder[0]?.team_id),
         defender_team_id: isSingles ? null : quickRecordTarget.team_id,
-        status: 'score_submitted',
+        status: autoAccept ? 'completed' : 'score_submitted',
         score_text: qrScoreText,
         score_submitted_by: user?.id,
         score_submitted_at: new Date().toISOString()
       };
+
+      if (autoAccept) {
+        payload.played_at = new Date().toISOString();
+      }
 
       if (isSingles) {
         payload.winner_id = qrWinnerId;
@@ -586,7 +624,7 @@ export default function LadderView() {
       setQuickRecordTarget(null);
       setQrScoreText('');
       setQrWinnerId('');
-      alert('Result submitted! Your opponent needs to confirm this on their dashboard.');
+      alert(autoAccept ? 'Result submitted and auto-accepted since the opponent has a pending invitation.' : 'Result submitted! Your opponent needs to confirm this on their dashboard.');
       await load();
     } catch (err: any) {
       setQrErr(err.message || 'Failed to record result.');
@@ -778,6 +816,53 @@ export default function LadderView() {
       alert(err.message || 'Failed to save changes.');
     } finally {
       setSavingEdit(false);
+    }
+  }
+
+  async function handleDeleteLadder() {
+    if (!ladder || !id) return;
+
+    try {
+      // 1. Check for matches
+      const { count, error: countErr } = await supabase
+        .from('matches')
+        .select('*', { count: 'exact', head: true })
+        .eq('ladder_id', ladderId);
+      
+      if (countErr) throw countErr;
+
+      const hasData = (count || 0) > 0 || entries.length > 0;
+      const message = hasData 
+        ? `WARNING: This ladder has ${count || 0} matches and ${entries.length} participants. Deleting it will PERMANENTLY remove all match history and standings. This cannot be undone.\n\nAre you absolutely sure?`
+        : `Are you sure you want to delete the ladder "${ladder.name}"?`;
+
+      if (!window.confirm(message)) return;
+
+      setDeletingLadder(true);
+
+      // 2. Delete dependencies
+      await supabase.from('matches').delete().eq('ladder_id', ladderId);
+      await supabase.from('ladder_players').delete().eq('ladder_id', ladderId);
+      await supabase.from('ladder_teams').delete().eq('ladder_id', ladderId);
+      await supabase.from('ladder_join_requests').delete().eq('ladder_id', ladderId);
+      await supabase.from('club_join_requests').delete().eq('ladder_id', ladderId);
+      await supabase.from('member_invitations').delete().eq('ladder_id', ladderId);
+
+      // 3. Delete the ladder itself
+      const { error: delErr } = await supabase
+        .from('ladders')
+        .delete()
+        .eq('id', ladderId);
+      
+      if (delErr) throw delErr;
+
+      setShowEditModal(false);
+      navigate(`/clubs/${id}`);
+    } catch (err: any) {
+      console.error('Delete ladder error:', err);
+      alert(err.message || 'Failed to delete ladder');
+    } finally {
+      setDeletingLadder(false);
     }
   }
 
@@ -1184,10 +1269,21 @@ export default function LadderView() {
 
 
       <div className="card">
-        <h2 className="section-title" style={{ marginBottom: '1.25rem' }}>
-          <Trophy size={18} style={{ display: 'inline', marginRight: '0.4rem', color: '#f59e0b' }} />
-          Standings
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
+          <h2 className="section-title" style={{ marginBottom: 0 }}>
+            <Trophy size={18} style={{ display: 'inline', marginRight: '0.4rem', color: '#f59e0b' }} />
+            Standings
+          </h2>
+          <select 
+            value={sortMode} 
+            onChange={(e) => setSortMode(e.target.value as 'rank' | 'elo')}
+            className="input"
+            style={{ padding: '0.3rem 0.6rem', fontSize: '0.85rem', borderRadius: '6px' }}
+          >
+            <option value="rank">Sort by Ladder Rank</option>
+            <option value="elo">Sort by ELO Rating</option>
+          </select>
+        </div>
 
         {entries.length === 0 && pendingJoinRequests.length === 0 && pendingInvites.length === 0 ? (
           <p style={{ color: '#9ca3af', textAlign: 'center', padding: '1.5rem' }}>No one has joined yet. Be the first!</p>
@@ -1551,6 +1647,31 @@ export default function LadderView() {
                 <button className="btn btn-outline" onClick={() => setShowEditModal(false)}>Cancel</button>
                 <button className="btn" onClick={saveEditLadder} disabled={savingEdit}>{savingEdit ? 'Saving…' : 'Save'}</button>
               </div>
+
+              <div style={{ marginTop: '2rem', borderTop: '2px solid #fee2e2', paddingTop: '1.25rem' }}>
+                <h4 style={{ fontSize: '0.9rem', color: '#dc2626', marginBottom: '0.75rem', fontWeight: 700 }}>Danger Zone</h4>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-light)', marginBottom: '1rem' }}>
+                  Permanently delete this ladder and all associated match data.
+                </p>
+                <button 
+                  className="btn" 
+                  onClick={handleDeleteLadder}
+                  disabled={deletingLadder}
+                  style={{ 
+                    backgroundColor: '#dc2626', 
+                    borderColor: '#dc2626', 
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  <Trash2 size={16} />
+                  {deletingLadder ? 'Deleting...' : 'Delete Ladder'}
+                </button>
+              </div>
+
               <div style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                 <h4 style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>Ladder Participants</h4>
                 {entries.length === 0 ? (

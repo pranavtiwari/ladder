@@ -16,6 +16,7 @@ const Profile = lazy(() => import('./pages/Profile'));
 const Rules = lazy(() => import('./pages/Rules'));
 const PublicReport = lazy(() => import('./pages/PublicReport'));
 const ShortLinkRedirector = lazy(() => import('./pages/ShortLinkRedirector'));
+const ReportIssue = lazy(() => import('./pages/ReportIssue'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -58,6 +59,7 @@ function App() {
             <Route path="ladders" element={<LadderStandings />} />
             <Route path="matches" element={<MatchHistory />} />
             <Route path="profile" element={<Profile />} />
+            <Route path="report-issue" element={<ReportIssue />} />
             <Route path="rules" element={<Rules />} />
           </Route>
         </Routes>

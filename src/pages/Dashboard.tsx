@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle, XCircle, LogOut, Users, Swords, Trophy, X } from 'lucide-react';
+import { CheckCircle, XCircle, LogOut, Users, Swords, Trophy, X, Mail } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
@@ -15,6 +15,7 @@ export default function Dashboard() {
   const [ranks, setRanks] = useState<any[]>([]);
   const [ranksTitle, setRanksTitle] = useState<string>("My Ranks");
   const [processingReq, setProcessingReq] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<any[]>([]);
 
   // Score recording
   const [recordingMatch, setRecordingMatch] = useState<any>(null);
@@ -28,6 +29,7 @@ export default function Dashboard() {
       loadJoinRequests();
       loadMatches();
       loadRanks();
+      loadInvitations();
     }
   }, [user]);
 
@@ -49,6 +51,55 @@ export default function Dashboard() {
       console.error(err);
     } finally {
       setLoadingClubs(false);
+    }
+  }
+
+  async function loadInvitations() {
+    try {
+      const { data } = await supabase
+        .from('member_invitations')
+        .select('*, clubs(name), ladders(name, type)')
+        .eq('email', user?.email)
+        .order('created_at', { ascending: false });
+      setInvitations(data || []);
+    } catch (err) {
+      console.error('Error loading invitations:', err);
+    }
+  }
+
+  async function handleAcceptInvitation(inv: any) {
+    try {
+      setProcessingReq(inv.id);
+      // We can use the existing RPC which processes all, OR manually join.
+      // Since the user said "auto join is fine", the existing RPC is the most robust way.
+      const { error } = await supabase.rpc('process_pending_invitations');
+      if (error) throw error;
+      
+      // Refresh all data
+      await Promise.all([
+        loadClubs(),
+        loadInvitations(),
+        loadRanks(),
+        loadJoinRequests()
+      ]);
+    } catch (err: any) {
+      alert(err.message || 'Failed to accept invitation.');
+    } finally {
+      setProcessingReq(null);
+    }
+  }
+
+  async function handleDeclineInvitation(id: string) {
+    if (!window.confirm('Are you sure you want to decline this invitation?')) return;
+    try {
+      setProcessingReq(id);
+      const { error } = await supabase.from('member_invitations').delete().eq('id', id);
+      if (error) throw error;
+      setInvitations(prev => prev.filter(inv => inv.id !== id));
+    } catch (err: any) {
+      alert(err.message || 'Failed to decline invitation.');
+    } finally {
+      setProcessingReq(null);
     }
   }
 
@@ -75,7 +126,11 @@ export default function Dashboard() {
 
   async function loadMatches() {
     try {
-      // 1. Get my teams first for filtering
+      // 1. Process 24h stale matches BEFORE pulling accurate database state
+      const { error: rpcErr } = await supabase.rpc('accept_stale_matches');
+      if (rpcErr) console.error(rpcErr);
+
+      // 2. Get my teams first for filtering
       const { data: myTeams } = await supabase
         .from('teams')
         .select('id')
@@ -97,19 +152,6 @@ export default function Dashboard() {
         .order('played_at', { ascending: false });
 
       const matches = data || [];
-      const now = new Date();
-
-      // 24h Auto-accept logic
-      for (const m of matches) {
-        if (m.status === 'score_submitted' && m.score_submitted_at) {
-          const submittedAt = new Date(m.score_submitted_at);
-          const hoursDiff = (now.getTime() - submittedAt.getTime()) / (1000 * 60 * 60);
-          if (hoursDiff >= 24) {
-            await supabase.from('matches').update({ status: 'completed' }).eq('id', m.id);
-            m.status = 'completed';
-          }
-        }
-      }
 
       setPendingChallenges(matches.filter((m: any) => m.status === 'pending'));
       setPendingScores(matches.filter((m: any) => m.status === 'accepted'));
@@ -313,6 +355,7 @@ export default function Dashboard() {
   }
 
   const totalActions = joinRequests.length + 
+    invitations.length +
     pendingChallenges.filter((m: any) => m.defender_id === user?.id || (m.defender_team && (m.defender_team.player1_id === user?.id || m.defender_team.player2_id === user?.id))).length + 
     pendingScores.length + confirmations.length;
 
@@ -351,6 +394,45 @@ export default function Dashboard() {
           <p style={{ color: '#9ca3af', fontSize: '0.9rem' }}>No pending actions. You're all caught up! 🎉</p>
         ) : (
           <div className="flex-col gap-3">
+            {/* Invitations */}
+            {invitations.map(inv => {
+              const clubName = inv.clubs?.name || 'a club';
+              const ladderName = inv.ladders?.name;
+              return (
+                <div key={inv.id} style={{ padding: '0.85rem 1rem', backgroundColor: '#ecfdf5', borderRadius: 'var(--radius-md)', border: '1px solid #6ee7b7', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', backgroundColor: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Mail size={20} color="white" />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#065f46' }}>New Invitation</div>
+                      <div style={{ fontSize: '0.8rem', color: '#047857' }}>
+                        You've been invited to join <strong>{clubName}</strong>{ladderName ? ` (${ladderName} ladder)` : ''}!
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      className="btn" 
+                      style={{ backgroundColor: '#059669', color: 'white', padding: '0.35rem 1rem', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.3rem' }} 
+                      disabled={processingReq === inv.id} 
+                      onClick={() => handleAcceptInvitation(inv)}
+                    >
+                      {processingReq === inv.id ? 'Joining...' : 'Accept & Join'}
+                    </button>
+                    <button 
+                      className="btn btn-outline" 
+                      style={{ padding: '0.35rem 1rem', fontSize: '0.85rem', color: '#dc2626', borderColor: '#dc2626' }} 
+                      disabled={processingReq === inv.id} 
+                      onClick={() => handleDeclineInvitation(inv.id)}
+                    >
+                      Decline
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+
             {/* Join requests */}
             {joinRequests.map(req => {
               const p = req.profiles;

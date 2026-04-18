@@ -36,6 +36,7 @@ export default function ClubView() {
   // Inline ladder rename
   const [renamingLadderId, setRenamingLadderId] = useState<string | null>(null);
   const [ladderNameDraft, setLadderNameDraft] = useState('');
+  const [deletingLadderId, setDeletingLadderId] = useState<string | null>(null);
 
   // Ladders
   const [ladders, setLadders] = useState<any[]>([]);
@@ -138,6 +139,60 @@ export default function ClubView() {
       .eq('club_id', id)
       .order('name');
     setLadders(data || []);
+  }
+
+  async function handleDeleteLadder(ladderId: string, ladderName: string) {
+    if (!isAdmin) return;
+
+    try {
+      // 1. Check for matches/data
+      const { count, error: countErr } = await supabase
+        .from('matches')
+        .select('*', { count: 'exact', head: true })
+        .eq('ladder_id', ladderId);
+      
+      if (countErr) throw countErr;
+
+      const { count: playerCount, error: playerErr } = await supabase
+        .from('ladder_players')
+        .select('*', { count: 'exact', head: true })
+        .eq('ladder_id', ladderId);
+      
+      if (playerErr) throw playerErr;
+
+      const hasData = (count || 0) > 0 || (playerCount || 0) > 0;
+      const message = hasData 
+        ? `WARNING: The ladder "${ladderName}" has match history or participants. Deleting it will PERMANENTLY remove all standings and scores. This cannot be undone.\n\nAre you sure you want to delete it?`
+        : `Are you sure you want to delete the ladder "${ladderName}"?`;
+
+      if (!window.confirm(message)) return;
+
+      setDeletingLadderId(ladderId);
+
+      // 2. Sequential deletion of dependencies
+      await supabase.from('matches').delete().eq('ladder_id', ladderId);
+      await supabase.from('ladder_players').delete().eq('ladder_id', ladderId);
+      await supabase.from('ladder_teams').delete().eq('ladder_id', ladderId);
+      await supabase.from('ladder_join_requests').delete().eq('ladder_id', ladderId);
+      await supabase.from('member_invitations').delete().eq('ladder_id', ladderId);
+
+      // 3. Delete the ladder itself
+      const { error: delErr } = await supabase
+        .from('ladders')
+        .delete()
+        .eq('id', ladderId);
+      
+      if (delErr) throw delErr;
+
+      // Update local state
+      setLadders(prev => prev.filter(l => l.id !== ladderId));
+      alert('Ladder deleted successfully.');
+    } catch (err: any) {
+      console.error('Delete ladder error:', err);
+      alert(err.message || 'Failed to delete ladder');
+    } finally {
+      setDeletingLadderId(null);
+    }
   }
 
   async function loadPendingInvitations() {
@@ -807,13 +862,23 @@ export default function ClubView() {
                         {l.name}
                       </Link>
                       {isAdmin && (
-                        <button
-                          onClick={() => { setLadderNameDraft(l.name); setRenamingLadderId(l.id); }}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', padding: '1px' }}
-                          title="Rename ladder"
-                        >
-                          <Pencil size={12} />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => { setLadderNameDraft(l.name); setRenamingLadderId(l.id); }}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#d1d5db', padding: '1px' }}
+                            title="Rename ladder"
+                          >
+                            <Pencil size={12} />
+                          </button>
+                          <button
+                            onClick={() => handleDeleteLadder(l.id, l.name)}
+                            disabled={deletingLadderId === l.id}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fca5a5', padding: '1px', marginLeft: '2px' }}
+                            title="Delete ladder"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </>
                       )}
                     </div>
                   )}

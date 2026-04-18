@@ -61,7 +61,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               if (claimError) {
                 console.error('Error claiming dummy profile:', claimError);
               }
-              await supabase.rpc('process_pending_invitations');
+              // Auto-join disabled: invitations will be shown on the dashboard
               return;
             }
           }
@@ -93,14 +93,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             console.error('Error inserting profile:', insertError);
           } else {
             // Process the actual joining logic via RPC
-            await supabase.rpc('process_pending_invitations');
+            // Auto-join disabled: invitations will be shown on the dashboard
           }
         } else if (matchError) {
           console.error('Error checking profile existence:', matchError);
         } else {
           // Even if profile exists, try processing invitations just in case 
           // they were invited to a new club since their last login.
-          await supabase.rpc('process_pending_invitations');
+          // Auto-join disabled: invitations will be shown on the dashboard
         }
       } catch (error) {
         console.error('Error ensuring profile exists:', error);

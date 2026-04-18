@@ -151,9 +151,10 @@ export default function Layout() {
           <NavLink to="/matches" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <Layers size={20} /> Matches
           </NavLink>
-          <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
-            <User size={20} />
-            {nickname ? nickname : 'Profile'}
+          <NavLink to="/report-issue" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+             <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <span style={{ fontSize: '1.25rem' }}>💬</span> Report an Issue
+             </span>
           </NavLink>
           <NavLink to="/rules" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
             <BookOpen size={20} /> Rules & Info
@@ -190,8 +191,24 @@ export default function Layout() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="main-content">
-        <Outlet />
+      <main className="main-content" style={{ display: 'flex', flexDirection: 'column' }}>
+        {/* Top Header */}
+        <header style={{ 
+          display: 'flex', justifyContent: 'flex-end', padding: '1rem', 
+          borderBottom: '1px solid var(--border-color)', 
+          marginBottom: '1rem', zIndex: 10,
+          background: 'var(--surface-color)',
+          backdropFilter: 'var(--card-blur)'
+        }}>
+          <Link to="/profile" className="btn btn-outline" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem' }}>
+            <User size={18} />
+            <span>{nickname ? nickname : 'Profile'}</span>
+          </Link>
+        </header>
+
+        <div style={{ flex: 1, paddingBottom: '2rem' }}>
+          <Outlet />
+        </div>
       </main>
     </div>
   );

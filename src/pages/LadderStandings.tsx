@@ -548,7 +548,7 @@ export default function LadderStandings() {
                 {/* Sub-header for Unscheduled */}
                 <div style={{ padding: '0.75rem 1.25rem', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--surface-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-light)' }}>
-                    Ranked matches update ELO. Unscheduled matches shift ±1 rank.
+                    All completed matches will update player ELO ratings and standings.
                   </span>
                   <button
                     onClick={() => {
