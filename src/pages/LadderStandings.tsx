@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Link } from 'react-router-dom';
-import { Trophy, Swords, X, CheckCircle, XCircle, Share2 } from 'lucide-react';
+import { Trophy, Swords, X, CheckCircle, XCircle, Share2, Loader2 } from 'lucide-react';
+import { getOrCreateShortLink } from '../lib/urlUtils';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -31,6 +32,7 @@ export default function LadderStandings() {
   const [myRank, setMyRank] = useState<number | null>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [sortMode, setSortMode] = useState<'rank' | 'elo'>('rank');
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   // Challenge modal
   const [showChallenge, setShowChallenge] = useState(false);
@@ -331,18 +333,32 @@ export default function LadderStandings() {
     }
   }
 
-  function handleDownloadReport() {
-    if (!selected || !selected.ladders) return;
-    const clubName = selected.ladders.clubs?.name || 'Unknown';
-    const ladderName = selected.ladders.name || 'Unnamed';
-    const dateStr = new Date().toISOString().split('T')[0];
-    const reportUrl = `${window.location.origin}/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
-    
-    // Copy link
-    navigator.clipboard.writeText(reportUrl);
-    
-    // Trigger download (opens the public report page)
-    window.open(reportUrl); 
+  async function handleDownloadReport() {
+    if (!selected || !selected.ladders || generatingReport) return;
+    setGeneratingReport(true);
+    try {
+      const clubName = selected.ladders.clubs?.name || 'Unknown';
+      const ladderName = selected.ladders.name || 'Unnamed';
+      const dateStr = new Date().toISOString().split('T')[0];
+      const reportPath = `/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
+      
+      const shortCode = await getOrCreateShortLink(reportPath);
+      const shortUrl = `${window.location.origin}/r/${shortCode}`;
+      
+      navigator.clipboard.writeText(shortUrl);
+      window.open(shortUrl, '_blank');
+    } catch (err) {
+      console.error('Failed to generate short link:', err);
+      // Fallback
+      const clubName = selected.ladders.clubs?.name || 'Unknown';
+      const ladderName = selected.ladders.name || 'Unnamed';
+      const dateStr = new Date().toISOString().split('T')[0];
+      const longUrl = `${window.location.origin}/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
+      navigator.clipboard.writeText(longUrl);
+      window.open(longUrl, '_blank');
+    } finally {
+      setGeneratingReport(false);
+    }
   }
 
   if (loading) return <div style={{ padding: '2rem', color: 'var(--text-light)' }}>Loading…</div>;
@@ -504,10 +520,21 @@ export default function LadderStandings() {
                     </button>
                     <button
                       onClick={handleDownloadReport}
+                      disabled={generatingReport}
                       className="btn"
-                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.8rem', backgroundColor: 'var(--primary-color)', color: 'white' }}
+                      style={{ 
+                        padding: '0.4rem 0.75rem', 
+                        fontSize: '0.8rem', 
+                        backgroundColor: 'var(--primary-color)', 
+                        color: 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
+                        opacity: generatingReport ? 0.7 : 1
+                      }}
                     >
-                      <Share2 size={13} style={{ marginRight: '0.3rem' }} /> Report
+                      {generatingReport ? <Loader2 size={14} className="animate-spin" /> : <Share2 size={13} />}
+                      {generatingReport ? 'Shortening...' : 'Report'}
                     </button>
                     <Link
                       to={`/clubs/${selected.ladders?.club_id}/ladders/${selected.ladder_id}`}

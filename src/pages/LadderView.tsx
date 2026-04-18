@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle, Pencil, Lock, Globe, Share2 } from 'lucide-react';
+import { getOrCreateShortLink } from '../lib/urlUtils';
+import { ArrowLeft, Trophy, UserPlus, X, Swords, CheckCircle, XCircle, Pencil, Lock, Globe, Share2, Loader2 } from 'lucide-react';
 
 const SPORT_ICONS: Record<string, string> = {
   'Badminton': '🏸', 'Tennis': '🎾', 'Table Tennis': '🏓',
@@ -56,20 +57,36 @@ export default function LadderView() {
   const [participantToAdd, setParticipantToAdd] = useState('');
   const [processingAdd, setProcessingAdd] = useState(false);
   const [allClubTeams, setAllClubTeams] = useState<any[]>([]);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   const [sortMode, setSortMode] = useState<'rank' | 'elo'>('rank');
 
-  const handleDownloadReport = () => {
-    if (!ladder) return;
-    const clubName = ladder.clubs?.name || 'club';
-    const ladderName = ladder.name || 'ladder';
-    const dateStr = new Date().toISOString().split('T')[0];
-    const reportUrl = `${window.location.origin}/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
-    
-    // Copy link
-    navigator.clipboard.writeText(reportUrl);
-    
-    window.open(reportUrl, '_blank');
+  const handleDownloadReport = async () => {
+    if (!ladder || generatingReport) return;
+    setGeneratingReport(true);
+    try {
+      const clubName = ladder.clubs?.name || 'club';
+      const ladderName = ladder.name || 'ladder';
+      const dateStr = new Date().toISOString().split('T')[0];
+      const reportPath = `/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
+      
+      const shortCode = await getOrCreateShortLink(reportPath);
+      const shortUrl = `${window.location.origin}/r/${shortCode}`;
+      
+      navigator.clipboard.writeText(shortUrl);
+      window.open(shortUrl, '_blank');
+    } catch (err) {
+      console.error('Failed to generate short link:', err);
+      // Fallback to long URL
+      const clubName = ladder.clubs?.name || 'club';
+      const ladderName = ladder.name || 'ladder';
+      const dateStr = new Date().toISOString().split('T')[0];
+      const longUrl = `${window.location.origin}/reports/${encodeURIComponent(clubName)}/${encodeURIComponent(ladderName)}/${dateStr}`;
+      navigator.clipboard.writeText(longUrl);
+      window.open(longUrl, '_blank');
+    } finally {
+      setGeneratingReport(false);
+    }
   };
 
   // Sync activeTeamId when entries/myTeams change (must be before any early returns)
@@ -930,10 +947,12 @@ export default function LadderView() {
           
           <button
             onClick={handleDownloadReport}
+            disabled={generatingReport}
             className="btn"
-            style={{ padding: '0.45rem 1rem', fontSize: '0.82rem', backgroundColor: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            style={{ padding: '0.45rem 1rem', fontSize: '0.82rem', backgroundColor: 'var(--primary-color)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.4rem', opacity: generatingReport ? 0.7 : 1 }}
           >
-            <Share2 size={15} /> Report
+            {generatingReport ? <Loader2 size={15} className="animate-spin" /> : <Share2 size={15} />} 
+            {generatingReport ? 'Shortening...' : 'Report'}
           </button>
 
           {isAdmin && (

@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Share2, Download, AlertCircle } from 'lucide-react';
+import { getOrCreateShortLink } from '../lib/urlUtils';
+import { Share2, Download, AlertCircle, Loader2, Check } from 'lucide-react';
 
 interface MatchReport {
   id: string;
@@ -29,6 +30,8 @@ export default function PublicReport() {
   const [matches, setMatches] = useState<MatchReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     loadReport();
@@ -63,6 +66,28 @@ export default function PublicReport() {
       .replace(/\{loser\}/g, loser);
   }
 
+  async function handleShare() {
+    if (sharing) return;
+    setSharing(true);
+    try {
+      const path = `/reports/${encodeURIComponent(clubName || '')}/${encodeURIComponent(ladderName || '')}/${date}`;
+      const shortCode = await getOrCreateShortLink(path);
+      const shortUrl = `${window.location.origin}/r/${shortCode}`;
+      
+      await navigator.clipboard.writeText(shortUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to share:', err);
+      // Fallback
+      await navigator.clipboard.writeText(window.location.href);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } finally {
+      setSharing(false);
+    }
+  }
+
   function downloadText() {
     const content = matches.map(m => {
       const line = `${m.challenger_name} vs ${m.defender_name} | Score: ${m.score_text} | Winner: ${m.winner_name} ${m.status !== 'completed' ? '(Unconfirmed)' : ''}`;
@@ -95,65 +120,88 @@ export default function PublicReport() {
 
   return (
     <div style={{ padding: '0 1rem', maxWidth: '800px', margin: '0 auto', minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', flexDirection: 'column', color: 'white', alignItems: 'center' }}>
-      <div style={{ textAlign: 'center', marginTop: '3rem', marginBottom: '3rem', width: '100%' }}>
+      <div style={{ textAlign: 'center', marginTop: '3.5rem', marginBottom: '3.5rem', width: '100%' }}>
+        {/* App Branding */}
+        <div style={{ 
+          fontSize: '0.8rem', 
+          fontWeight: 900, 
+          letterSpacing: '0.4em', 
+          color: 'var(--primary-color)', 
+          marginBottom: '2rem',
+          opacity: 0.8
+        }}>
+          LADDER
+        </div>
+
         {/* Club Branding */}
         <div style={{ 
-          fontSize: '2.5rem', 
+          fontSize: '3rem', 
           color: 'white', 
-          marginBottom: '0.25rem', 
-          fontWeight: 800,
-          lineHeight: 1.1
+          marginBottom: '0.5rem', 
+          fontWeight: 900,
+          lineHeight: 1.1,
+          letterSpacing: '-0.02em',
+          textShadow: '0 4px 12px rgba(0,0,0,0.3)'
         }}>
           {decodeURIComponent(clubName || '').replace(/-/g, ' ')}
         </div>
 
         {/* Report Type */}
         <div style={{ 
-          fontSize: '1.1rem', 
-          color: 'var(--accent-color)', 
-          marginBottom: '1rem', 
+          fontSize: '0.9rem', 
+          color: '#94a3b8', 
+          marginBottom: '1.5rem', 
           fontWeight: 600,
           textTransform: 'uppercase',
-          letterSpacing: '0.1em'
+          letterSpacing: '0.15em'
         }}>
-          Daily Match Report
+          Daily Report
         </div>
 
         {/* Ladder Name */}
         <div style={{ 
           fontSize: '1.5rem', 
-          color: '#e2e8f0', 
-          marginBottom: '1.5rem', 
-          fontWeight: 600,
-          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)',
-          padding: '0.5rem 0'
+          color: 'var(--primary-color)', 
+          marginBottom: '2rem', 
+          fontWeight: 700,
+          padding: '0.6rem 0',
+          borderTop: '1px solid rgba(255,255,255,0.05)',
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          display: 'inline-block',
+          width: 'fit-content',
+          minWidth: '200px'
         }}>
           {decodeURIComponent(ladderName || '').replace(/-/g, ' ')}
         </div>
 
         {/* Date and Share Button */}
-        <p className="text-light" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: '#94a3b8' }}>
-          Action from {new Date(date!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem', marginTop: '1rem' }}>
+          <span style={{ color: '#64748b', fontSize: '0.95rem', fontWeight: 500 }}>
+            {new Date(date!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+          </span>
           <button 
-            onClick={() => {
-              navigator.clipboard.writeText(window.location.href);
-              alert('Report link copied!');
-            }}
+            onClick={handleShare}
+            disabled={sharing}
             style={{ 
-              background: 'rgba(255,255,255,0.1)', 
-              border: 'none', 
-              borderRadius: '4px', 
-              padding: '2px 6px', 
+              background: copied ? 'var(--primary-color)' : 'rgba(255,255,255,0.05)', 
+              border: '1px solid rgba(255,255,255,0.1)', 
+              borderRadius: '8px', 
+              padding: '6px 10px', 
               color: 'white', 
               cursor: 'pointer',
               display: 'inline-flex',
-              alignItems: 'center'
+              alignItems: 'center',
+              gap: '0.4rem',
+              transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+              fontSize: '0.8rem',
+              fontWeight: 600
             }}
-            title="Copy report link"
+            title="Copy short link"
           >
-            <Share2 size={14} />
+            {sharing ? <Loader2 size={14} className="animate-spin" /> : (copied ? <Check size={14} /> : <Share2 size={14} />)}
+            {copied ? 'Copied' : 'Share'}
           </button>
-        </p>
+        </div>
       </div>
 
       <div className="flex-col gap-4">

@@ -15,6 +15,7 @@ const Login = lazy(() => import('./pages/Login'));
 const Profile = lazy(() => import('./pages/Profile'));
 const Rules = lazy(() => import('./pages/Rules'));
 const PublicReport = lazy(() => import('./pages/PublicReport'));
+const ShortLinkRedirector = lazy(() => import('./pages/ShortLinkRedirector'));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, loading } = useAuth();
@@ -47,6 +48,7 @@ function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/reports/:clubName/:ladderName/:date" element={<PublicReport />} />
+          <Route path="/r/:id" element={<ShortLinkRedirector />} />
           <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route index element={<Dashboard />} />
             <Route path="clubs" element={<ClubDetails />} />
