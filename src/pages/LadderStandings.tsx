@@ -589,13 +589,13 @@ export default function LadderStandings() {
                     
                     const isUnplayed = (e.wins ?? 0) + (e.losses ?? 0) === 0;
                     const prevIsPlayed = i > 0 && (arr[i-1].wins ?? 0) + (arr[i-1].losses ?? 0) > 0;
-                    const showUnplayedHeader = isUnplayed && (i === 0 ? false : prevIsPlayed); // only separate if there is a played list above it
+                    const showUnplayedHeader = sortMode === 'rank' && isUnplayed && (i === 0 ? false : prevIsPlayed); // only separate if there is a played list above it
 
                     return (
                       <React.Fragment key={e.id}>
                         {showUnplayedHeader && (
                           <div style={{ padding: '0.4rem 1.25rem', backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
-                            Yet to play
+                            Sleeper cells
                           </div>
                         )}
                         <div style={{

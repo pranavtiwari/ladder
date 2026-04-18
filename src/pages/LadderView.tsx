@@ -1198,8 +1198,8 @@ export default function LadderView() {
               return (
                 <React.Fragment key={entry.id}>
                   {showUnplayedHeader && (
-                    <div style={{ padding: '0.4rem 1.25rem', backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
-                      Unplayed
+                    <div style={{ padding: '0.4rem 1.25rem', backgroundColor: '#f1f5f9', color: '#64748b', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', borderTop: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0' }}>
+                      Sleeper cells
                     </div>
                   )}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '0.75rem 0.5rem', backgroundColor: isMe ? 'rgba(34,197,94,0.08)' : 'transparent', borderBottom: hasBorder ? '1px solid var(--border-color)' : 'none', borderRadius: '6px' }}>
