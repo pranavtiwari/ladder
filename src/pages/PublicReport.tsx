@@ -96,15 +96,47 @@ export default function PublicReport() {
   return (
     <div style={{ padding: '0 1rem', maxWidth: '800px', margin: '0 auto', minHeight: '100vh', backgroundColor: '#0f172a', display: 'flex', flexDirection: 'column', color: 'white', alignItems: 'center' }}>
       <div style={{ textAlign: 'center', marginTop: '3rem', marginBottom: '3rem', width: '100%' }}>
-        <h1 className="page-title" style={{ fontSize: '2.5rem', marginBottom: '0.5rem', color: 'white' }}>Daily Ladder Report</h1>
-        <p className="text-light" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
-          Recap of all action from {new Date(date!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+        {/* Club Branding */}
+        <div style={{ 
+          fontSize: '2.5rem', 
+          color: 'white', 
+          marginBottom: '0.25rem', 
+          fontWeight: 800,
+          lineHeight: 1.1
+        }}>
+          {decodeURIComponent(clubName || '').replace(/-/g, ' ')}
+        </div>
+
+        {/* Report Type */}
+        <div style={{ 
+          fontSize: '1.1rem', 
+          color: 'var(--accent-color)', 
+          marginBottom: '1rem', 
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.1em'
+        }}>
+          Daily Match Report
+        </div>
+
+        {/* Ladder Name */}
+        <div style={{ 
+          fontSize: '1.5rem', 
+          color: '#e2e8f0', 
+          marginBottom: '1.5rem', 
+          fontWeight: 600,
+          background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.05), transparent)',
+          padding: '0.5rem 0'
+        }}>
+          {decodeURIComponent(ladderName || '').replace(/-/g, ' ')}
+        </div>
+
+        {/* Date and Share Button */}
+        <p className="text-light" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', color: '#94a3b8' }}>
+          Action from {new Date(date!).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
           <button 
             onClick={() => {
               navigator.clipboard.writeText(window.location.href);
-              // Use a subtle non-blocking way to show success if possible, 
-              // but for now I'll just change the text/icon briefly or use alert
-              // Actually, I'll just use a small tooltip effect or alert for now to keep it simple as per user request
               alert('Report link copied!');
             }}
             style={{ 
